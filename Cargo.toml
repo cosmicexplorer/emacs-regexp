@@ -1,0 +1,54 @@
+[workspace]
+members                 = [
+    ".",
+    "syntax",
+]
+default-members         = [
+    ".",
+    "syntax",
+]
+resolver                = "2"
+
+[workspace.package]
+edition                 = "2021"
+repository              = "https://github.com/cosmicexplorer/emacs-regexp"
+authors                 = ["Danny McClanahan <dmcC2@hypnicjerk.ai>"]
+
+[package]
+name                    = "emacs-regexp"
+description             = "Implementation of emacs regexp matching!"
+version                 = "0.0.0"
+edition.workspace       = true
+license                 = "GPL-3.0-or-later"
+repository.workspace    = true
+authors.workspace       = true
+
+[lib]
+name                    = "rex"
+
+[workspace.dependencies]
+emacs-regexp-syntax     = { path = "./syntax" }
+
+[dependencies]
+emacs-regexp-syntax.workspace = true
+regex-automata = "0.4.5"
+
+[dev-dependencies]
+
+[workspace.lints.clippy]
+len_without_is_empty    = "allow"
+redundant_field_names   = "allow"
+too_many_arguments      = "allow"
+single_component_path_imports = "allow"
+module_inception        = "allow"
+match_ref_pats          = "allow"
+expl_impl_clone_on_copy = "deny"
+if_not_else             = "deny"
+needless_continue       = "deny"
+unseparated_literal_suffix = "deny"
+used_underscore_binding = "deny"
+collapsible_else_if     = "allow"
+result_large_err        = "allow"
+
+[lints]
+workspace               = true
