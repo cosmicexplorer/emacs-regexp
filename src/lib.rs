@@ -40,13 +40,13 @@ type ComponentLen = u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct ComponentOffset(ComponentLen);
+pub struct ComponentOffset(pub ComponentLen);
 
 type GlobalLen = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct GlobalOffset(GlobalLen);
+pub struct GlobalOffset(pub GlobalLen);
 
 pub enum Anchoring {
   DoublyAnchored,
@@ -159,5 +159,47 @@ pub mod literal {
     type S = usize;
     type It = <Option<Self::S> as IntoIterator>::IntoIter;
     fn invoke(&self, i: Self::I) -> Self::It { self.lits.get_index_of(i).into_iter() }
+  }
+
+  pub struct LeftLiteralContinuation<'a> {
+    pub rest: &'a [u8],
+  }
+  impl<'a> continuation::Continuation for LeftLiteralContinuation<'a> {}
+
+  pub struct LeftAnchoredSingleLiteral<'a> {
+    lit: &'a [u8],
+  }
+  impl<'a> LeftAnchoredSingleLiteral<'a> {
+    pub fn new(lit: &'a [u8]) -> Self { Self { lit } }
+  }
+  impl<'a> LeftAnchoredMatcher for LeftAnchoredSingleLiteral<'a> {
+    type I = &'a [u8];
+    type S = ();
+    type C = LeftLiteralContinuation<'a>;
+    type It = <Option<LeftAnchoredMatchResult<Self::S, Self::C>> as IntoIterator>::IntoIter;
+    fn invoke(&self, i: Self::I) -> Self::It {
+      if i.len() >= self.lit.len() {
+        if i.starts_with(self.lit) {
+          Some(LeftAnchoredMatchResult::CompleteMatch(
+            (),
+            ComponentOffset(self.lit.len().try_into().unwrap()),
+          ))
+        } else {
+          None
+        }
+      } else {
+        if self.lit.starts_with(i) {
+          Some(LeftAnchoredMatchResult::PartialMatch(
+            (),
+            LeftLiteralContinuation {
+              rest: &self.lit[i.len()..],
+            },
+          ))
+        } else {
+          None
+        }
+      }
+      .into_iter()
+    }
   }
 }
