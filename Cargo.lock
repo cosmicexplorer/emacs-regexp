@@ -15,8 +15,8 @@ dependencies = [
 name = "emacs-regexp"
 version = "0.0.0"
 dependencies = [
- "emacs-regexp-syntax",
- "regex-automata",
+ "aho-corasick",
+ "memchr",
 ]
 
 [[package]]
@@ -31,17 +31,6 @@ name = "memchr"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
-
-[[package]]
-name = "regex-automata"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bb987efffd3c6d0d8f5f89510bb458559eab11e4f869acb20bf845e016259cd"
-dependencies = [
- "aho-corasick",
- "memchr",
- "regex-syntax",
-]
 
 [[package]]
 name = "regex-syntax"
