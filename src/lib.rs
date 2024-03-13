@@ -53,26 +53,13 @@ pub enum Chunking {
   Streaming,
 }
 
-pub mod interval {
-  pub type Index = u64;
+pub type Index = u64;
 
-  primitive_wrapper![Offset, Index];
+primitive_wrapper![Offset, Index];
 
-  pub struct Interval {
-    pub left: Offset,
-    pub right: Offset,
-  }
-}
-
-pub mod result {
-  pub trait Result {}
-
-  pub struct DidNotMatch;
-  impl Result for DidNotMatch {}
-
-  pub struct Matched<T>(pub T);
-  /* where T: super::params::Params; */
-  impl<T> Result for Matched<T> {}
+pub struct Interval {
+  pub left: Offset,
+  pub right: Offset,
 }
 
 pub enum Anchoring {
@@ -96,6 +83,72 @@ pub mod alphabet {
 
   /* pub struct Alphabet<S>(pub IndexSet<S>) */
   /* where S: Symbol; */
+}
+
+pub enum DoublyAnchoredMatchResult<S>
+where S: alphabet::Symbol
+{
+  Matched(S),
+}
+
+pub trait DoublyAnchoredMatcher {
+  type S: alphabet::Symbol;
+  type It: Iterator<Item=DoublyAnchoredMatchResult<Self::S>>;
+  fn invoke(i: Interval) -> Self::It;
+}
+
+pub mod continuation {
+  pub trait Continuation {}
+}
+
+pub enum LeftAnchoredMatchResult<S, C>
+where
+  S: alphabet::Symbol,
+  C: continuation::Continuation,
+{
+  CompleteMatch(S, Offset),
+  PartialMatch(S, C),
+}
+
+pub trait LeftAnchoredMatcher {
+  type S: alphabet::Symbol;
+  type C: continuation::Continuation;
+  type It: Iterator<Item=LeftAnchoredMatchResult<Self::S, Self::C>>;
+  fn invoke(i: Interval) -> Self::It;
+}
+
+pub enum RightAnchoredMatchResult<S, C>
+where
+  S: alphabet::Symbol,
+  C: continuation::Continuation,
+{
+  CompleteMatch(S, Offset),
+  PartialMatch(S, C),
+}
+
+pub trait RightAnchoredMatcher {
+  type S: alphabet::Symbol;
+  type C: continuation::Continuation;
+  type It: Iterator<Item=RightAnchoredMatchResult<Self::S, Self::C>>;
+  fn invoke(i: Interval) -> Self::It;
+}
+
+pub enum UnanchoredMatchResult<S, C>
+where
+  S: alphabet::Symbol,
+  C: continuation::Continuation,
+{
+  CompleteMatch(S, Interval),
+  PartialLeftOnly(S, C, Offset),
+  PartialRightOnly(S, C, Offset),
+  PartialBoth(S, C, C),
+}
+
+pub trait UnanchoredMatcher {
+  type S: alphabet::Symbol;
+  type C: continuation::Continuation;
+  type It: Iterator<Item=UnanchoredMatchResult<Self::S, Self::C>>;
+  fn invoke(i: Interval) -> Self::It;
 }
 
 pub trait Automaton {
