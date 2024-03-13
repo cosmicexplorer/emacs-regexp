@@ -64,9 +64,12 @@ pub mod continuation {
 }
 
 pub mod alphabet {
-  pub trait Symbol {}
+  use core::hash::Hash;
+
+  pub trait Symbol: Hash+Eq {}
 
   impl Symbol for () {}
+  impl Symbol for usize {}
 }
 
 pub trait DoublyAnchoredMatcher {
@@ -135,17 +138,39 @@ pub trait DoublyAnchoredMatcher {
 /* } */
 
 pub mod literal {
-  /* use indexmap::IndexSet; */
+  use indexmap::IndexSet;
 
   use super::*;
 
-  pub struct DoublyAnchoredSingleLiteral<'a>(pub &'a [u8]);
+  pub struct DoublyAnchoredSingleLiteral<'a> {
+    lit: &'a [u8],
+  }
+  impl<'a> DoublyAnchoredSingleLiteral<'a> {
+    pub fn new(lit: &'a [u8]) -> Self { Self { lit } }
+  }
   impl<'a> DoublyAnchoredMatcher for DoublyAnchoredSingleLiteral<'a> {
     type I = &'a [u8];
     type S = ();
     type It = <Option<Self::S> as IntoIterator>::IntoIter;
     fn invoke(&self, i: Self::I) -> Self::It {
-      if i == self.0 { Some(()) } else { None }.into_iter()
+      if i == self.lit { Some(()) } else { None }.into_iter()
     }
+  }
+
+  pub struct DoublyAnchoredMultipleLiterals<'a> {
+    lits: IndexSet<&'a [u8]>,
+  }
+  impl<'a> DoublyAnchoredMultipleLiterals<'a> {
+    pub fn new(lits: impl IntoIterator<Item=&'a [u8]>) -> Self {
+      Self {
+        lits: lits.into_iter().collect(),
+      }
+    }
+  }
+  impl<'a> DoublyAnchoredMatcher for DoublyAnchoredMultipleLiterals<'a> {
+    type I = &'a [u8];
+    type S = usize;
+    type It = <Option<Self::S> as IntoIterator>::IntoIter;
+    fn invoke(&self, i: Self::I) -> Self::It { self.lits.get_index_of(i).into_iter() }
   }
 }
