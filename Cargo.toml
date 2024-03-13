@@ -47,6 +47,7 @@ name                    = "rex"
 [dependencies]
 # emacs-regexp-syntax.workspace = true
 aho-corasick            = "1.1.2"
+# indexmap                = "2.2.5"
 memchr                  = "2.7.1"
 
 [build-dependencies]
