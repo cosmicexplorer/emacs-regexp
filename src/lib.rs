@@ -202,4 +202,46 @@ pub mod literal {
       .into_iter()
     }
   }
+
+  pub struct RightLiteralContinuation<'a> {
+    pub rest: &'a [u8],
+  }
+  impl<'a> continuation::Continuation for RightLiteralContinuation<'a> {}
+
+  pub struct RightAnchoredSingleLiteral<'a> {
+    lit: &'a [u8],
+  }
+  impl<'a> RightAnchoredSingleLiteral<'a> {
+    pub fn new(lit: &'a [u8]) -> Self { Self { lit } }
+  }
+  impl<'a> RightAnchoredMatcher for RightAnchoredSingleLiteral<'a> {
+    type I = &'a [u8];
+    type S = ();
+    type C = RightLiteralContinuation<'a>;
+    type It = <Option<RightAnchoredMatchResult<Self::S, Self::C>> as IntoIterator>::IntoIter;
+    fn invoke(&self, i: Self::I) -> Self::It {
+      if i.len() >= self.lit.len() {
+        if i.ends_with(self.lit) {
+          Some(RightAnchoredMatchResult::CompleteMatch(
+            (),
+            ComponentOffset(self.lit.len().try_into().unwrap()),
+          ))
+        } else {
+          None
+        }
+      } else {
+        if self.lit.ends_with(i) {
+          Some(RightAnchoredMatchResult::PartialMatch(
+            (),
+            RightLiteralContinuation {
+              rest: &self.lit[..(self.lit.len() - i.len())],
+            },
+          ))
+        } else {
+          None
+        }
+      }
+      .into_iter()
+    }
+  }
 }
