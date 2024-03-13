@@ -59,86 +59,93 @@ pub enum Params {
   MultipleParallel,
 }
 
-type SymbolLen = u16;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct Symbol(SymbolLen);
-
 pub mod continuation {
   pub trait Continuation {}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum DoublyAnchoredMatchResult {
-  Matched(Symbol),
+pub mod alphabet {
+  pub trait Symbol {}
+
+  impl Symbol for () {}
 }
 
 pub trait DoublyAnchoredMatcher {
   type I: input::Input;
-  type It: Iterator<Item=DoublyAnchoredMatchResult>;
-  fn invoke(i: Self::I) -> Self::It;
+  type S: alphabet::Symbol;
+  type It: Iterator<Item=Self::S>;
+  fn invoke(&self, i: Self::I) -> Self::It;
 }
 
-pub enum LeftAnchoredMatchResult<C>
-where C: continuation::Continuation
-{
-  CompleteMatch(Symbol, ComponentOffset),
-  PartialMatch(Symbol, C),
-}
+/* type SymbolLen = u16; */
 
-pub trait LeftAnchoredMatcher {
-  type I: input::Input;
-  type C: continuation::Continuation;
-  type It: Iterator<Item=LeftAnchoredMatchResult<Self::C>>;
-  fn invoke(i: Self::I) -> Self::It;
-}
+/* #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)] */
+/* #[repr(transparent)] */
+/* pub struct Symbol(SymbolLen); */
 
-pub enum RightAnchoredMatchResult<C>
-where C: continuation::Continuation
-{
-  CompleteMatch(Symbol, ComponentOffset),
-  PartialMatch(Symbol, C),
-}
+/* pub enum LeftAnchoredMatchResult<C> */
+/* where C: continuation::Continuation */
+/* { */
+/* CompleteMatch(Symbol, ComponentOffset), */
+/* PartialMatch(Symbol, C), */
+/* } */
 
-pub trait RightAnchoredMatcher {
-  type I: input::Input;
-  type C: continuation::Continuation;
-  type It: Iterator<Item=RightAnchoredMatchResult<Self::C>>;
-  fn invoke(i: Self::I) -> Self::It;
-}
+/* pub trait LeftAnchoredMatcher { */
+/* type I: input::Input; */
+/* type C: continuation::Continuation; */
+/* type It: Iterator<Item=LeftAnchoredMatchResult<Self::C>>; */
+/* fn invoke(&self, i: Self::I) -> Self::It; */
+/* } */
 
-pub struct IntraComponentInterval {
-  pub left: ComponentOffset,
-  pub right: ComponentOffset,
-}
+/* pub enum RightAnchoredMatchResult<C> */
+/* where C: continuation::Continuation */
+/* { */
+/* CompleteMatch(Symbol, ComponentOffset), */
+/* PartialMatch(Symbol, C), */
+/* } */
 
-pub enum UnanchoredMatchResult<LC, RC>
-where
-  LC: continuation::Continuation,
-  RC: continuation::Continuation,
-{
-  CompleteMatch(Symbol, IntraComponentInterval),
-  PartialLeftOnly(Symbol, LC, ComponentOffset),
-  PartialRightOnly(Symbol, RC, ComponentOffset),
-  PartialBoth(Symbol, LC, RC),
-}
+/* pub trait RightAnchoredMatcher { */
+/* type I: input::Input; */
+/* type C: continuation::Continuation; */
+/* type It: Iterator<Item=RightAnchoredMatchResult<Self::C>>; */
+/* fn invoke(&self, i: Self::I) -> Self::It; */
+/* } */
 
-pub trait UnanchoredMatcher {
-  type I: input::Input;
-  type LC: continuation::Continuation;
-  type RC: continuation::Continuation;
-  type It: Iterator<Item=UnanchoredMatchResult<Self::LC, Self::RC>>;
-  fn invoke(i: Self::I) -> Self::It;
-}
+/* pub struct IntraComponentInterval { */
+/* pub left: ComponentOffset, */
+/* pub right: ComponentOffset, */
+/* } */
+
+/* pub enum UnanchoredMatchResult<LC, RC> */
+/* where */
+/* LC: continuation::Continuation, */
+/* RC: continuation::Continuation, */
+/* { */
+/* CompleteMatch(Symbol, IntraComponentInterval), */
+/* PartialLeftOnly(Symbol, LC, ComponentOffset), */
+/* PartialRightOnly(Symbol, RC, ComponentOffset), */
+/* PartialBoth(Symbol, LC, RC), */
+/* } */
+
+/* pub trait UnanchoredMatcher { */
+/* type I: input::Input; */
+/* type LC: continuation::Continuation; */
+/* type RC: continuation::Continuation; */
+/* type It: Iterator<Item=UnanchoredMatchResult<Self::LC, Self::RC>>; */
+/* fn invoke(&self, i: Self::I) -> Self::It; */
+/* } */
 
 pub mod literal {
   /* use indexmap::IndexSet; */
 
   use super::*;
 
-  /* pub struct DoublyAnchoredLiteral; */
-  /* impl DoublyAnchoredMatcher for DoublyAnchoredLiteral { */
-  /*   type I = &[u8]; */
-  /* } */
+  pub struct DoublyAnchoredSingleLiteral<'a>(pub &'a [u8]);
+  impl<'a> DoublyAnchoredMatcher for DoublyAnchoredSingleLiteral<'a> {
+    type I = &'a [u8];
+    type S = ();
+    type It = <Option<Self::S> as IntoIterator>::IntoIter;
+    fn invoke(&self, i: Self::I) -> Self::It {
+      if i == self.0 { Some(()) } else { None }.into_iter()
+    }
+  }
 }
