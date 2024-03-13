@@ -48,17 +48,9 @@ pub mod input {
   impl Input for Unicode {}
 }
 
-pub mod chunk {
-  pub trait Chunking {
-    /* TODO: */
-    /* type I: super::input::Input; */
-  }
-
-  pub struct Contiguous;
-  impl Chunking for Contiguous {}
-
-  pub struct Streaming;
-  impl Chunking for Streaming {}
+pub enum Chunking {
+  Contiguous,
+  Streaming,
 }
 
 pub mod interval {
@@ -79,38 +71,20 @@ pub mod result {
   impl Result for DidNotMatch {}
 
   pub struct Matched<T>(pub T);
+  /* where T: super::params::Params; */
   impl<T> Result for Matched<T> {}
 }
 
-pub mod anchor {
-  pub trait Anchoring {}
-
-  pub trait AnchorInto<T> {}
-
-  pub struct DoublyAnchored;
-  impl Anchoring for DoublyAnchored {}
-
-  pub struct Left;
-  impl Anchoring for Left {}
-
-  pub struct Right;
-  impl Anchoring for Right {}
-
-  pub struct Unanchored;
-  impl Anchoring for Unanchored {}
+pub enum Anchoring {
+  DoublyAnchored,
+  Left,
+  Right,
+  Unanchored,
 }
 
-pub mod params {
-  pub trait Params {
-    /* TODO: */
-    /* type S: super::alphabet::Symbol; */
-  }
-
-  pub struct Single;
-  impl Params for Single {}
-
-  pub struct MultipleParallel;
-  impl Params for MultipleParallel {}
+pub enum Params {
+  Single,
+  MultipleParallel,
 }
 
 pub mod alphabet {
@@ -125,27 +99,15 @@ pub mod alphabet {
 }
 
 pub trait Automaton {
-  type P: params::Params;
-  type C: chunk::Chunking;
-  type A: anchor::Anchoring;
-
   /* fn invoke(&self) -> A::Out; */
 }
 
 pub trait Builder {
   type I: input::Input;
   type S: alphabet::Symbol;
-  type Out<P, C, A>: Automaton<P=P, C=C, A=A>
-  where
-    P: params::Params,
-    C: chunk::Chunking,
-    A: anchor::Anchoring;
+  type Out: Automaton;
 
-  fn build<P, C, A>(p: P, c: C, a: A) -> Self::Out<P, C, A>
-  where
-    P: params::Params,
-    C: chunk::Chunking,
-    A: anchor::Anchoring;
+  fn build(params: Params, chunking: Chunking, anchoring: Anchoring) -> Self::Out;
 }
 
 /* pub struct Literal(pub String); */
