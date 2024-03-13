@@ -96,7 +96,7 @@ pub mod params {
 }
 
 pub mod alphabet {
-  use core::{cmp::Eq, hash::Hash};
+  use core::hash::Hash;
 
   /* use indexmap::IndexSet; */
 

@@ -19,6 +19,7 @@ remove_nested_parens = true
 reorder_impl_items = false
 reorder_imports = true
 reorder_modules = true
+group_imports = "StdExternalCrate"
 space_before_colon = false
 space_after_colon = true
 spaces_around_ranges = false
