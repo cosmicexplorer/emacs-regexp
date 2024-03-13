@@ -21,6 +21,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![deny(unsafe_code)]
 /* Ensure any doctest warnings fails the doctest! */
 #![doc(test(attr(deny(warnings))))]
+#![feature(trait_alias)]
 
 pub mod input {
   pub trait Input {}
@@ -66,10 +67,7 @@ pub mod continuation {
 pub mod alphabet {
   use core::hash::Hash;
 
-  pub trait Symbol: Hash+Eq {}
-
-  impl Symbol for () {}
-  impl Symbol for usize {}
+  pub trait Symbol = Hash+Eq;
 }
 
 pub trait DoublyAnchoredMatcher {
@@ -79,63 +77,52 @@ pub trait DoublyAnchoredMatcher {
   fn invoke(&self, i: Self::I) -> Self::It;
 }
 
-/* type SymbolLen = u16; */
+pub enum LeftAnchoredMatchResult<S, C> {
+  CompleteMatch(S, ComponentOffset),
+  PartialMatch(S, C),
+}
 
-/* #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)] */
-/* #[repr(transparent)] */
-/* pub struct Symbol(SymbolLen); */
+pub trait LeftAnchoredMatcher {
+  type I: input::Input;
+  type S: alphabet::Symbol;
+  type C: continuation::Continuation;
+  type It: Iterator<Item=LeftAnchoredMatchResult<Self::S, Self::C>>;
+  fn invoke(&self, i: Self::I) -> Self::It;
+}
 
-/* pub enum LeftAnchoredMatchResult<C> */
-/* where C: continuation::Continuation */
-/* { */
-/* CompleteMatch(Symbol, ComponentOffset), */
-/* PartialMatch(Symbol, C), */
-/* } */
+pub enum RightAnchoredMatchResult<S, C> {
+  CompleteMatch(S, ComponentOffset),
+  PartialMatch(S, C),
+}
 
-/* pub trait LeftAnchoredMatcher { */
-/* type I: input::Input; */
-/* type C: continuation::Continuation; */
-/* type It: Iterator<Item=LeftAnchoredMatchResult<Self::C>>; */
-/* fn invoke(&self, i: Self::I) -> Self::It; */
-/* } */
+pub trait RightAnchoredMatcher {
+  type I: input::Input;
+  type S: alphabet::Symbol;
+  type C: continuation::Continuation;
+  type It: Iterator<Item=RightAnchoredMatchResult<Self::S, Self::C>>;
+  fn invoke(&self, i: Self::I) -> Self::It;
+}
 
-/* pub enum RightAnchoredMatchResult<C> */
-/* where C: continuation::Continuation */
-/* { */
-/* CompleteMatch(Symbol, ComponentOffset), */
-/* PartialMatch(Symbol, C), */
-/* } */
+pub struct IntraComponentInterval {
+  pub left: ComponentOffset,
+  pub right: ComponentOffset,
+}
 
-/* pub trait RightAnchoredMatcher { */
-/* type I: input::Input; */
-/* type C: continuation::Continuation; */
-/* type It: Iterator<Item=RightAnchoredMatchResult<Self::C>>; */
-/* fn invoke(&self, i: Self::I) -> Self::It; */
-/* } */
+pub enum UnanchoredMatchResult<S, LC, RC> {
+  CompleteMatch(S, IntraComponentInterval),
+  PartialLeftOnly(S, LC, ComponentOffset),
+  PartialRightOnly(S, RC, ComponentOffset),
+  PartialBoth(S, LC, RC),
+}
 
-/* pub struct IntraComponentInterval { */
-/* pub left: ComponentOffset, */
-/* pub right: ComponentOffset, */
-/* } */
-
-/* pub enum UnanchoredMatchResult<LC, RC> */
-/* where */
-/* LC: continuation::Continuation, */
-/* RC: continuation::Continuation, */
-/* { */
-/* CompleteMatch(Symbol, IntraComponentInterval), */
-/* PartialLeftOnly(Symbol, LC, ComponentOffset), */
-/* PartialRightOnly(Symbol, RC, ComponentOffset), */
-/* PartialBoth(Symbol, LC, RC), */
-/* } */
-
-/* pub trait UnanchoredMatcher { */
-/* type I: input::Input; */
-/* type LC: continuation::Continuation; */
-/* type RC: continuation::Continuation; */
-/* type It: Iterator<Item=UnanchoredMatchResult<Self::LC, Self::RC>>; */
-/* fn invoke(&self, i: Self::I) -> Self::It; */
-/* } */
+pub trait UnanchoredMatcher {
+  type I: input::Input;
+  type S: alphabet::Symbol;
+  type LC: continuation::Continuation;
+  type RC: continuation::Continuation;
+  type It: Iterator<Item=UnanchoredMatchResult<Self::S, Self::LC, Self::RC>>;
+  fn invoke(&self, i: Self::I) -> Self::It;
+}
 
 pub mod literal {
   use indexmap::IndexSet;
