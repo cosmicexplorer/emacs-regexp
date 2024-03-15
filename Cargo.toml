@@ -47,6 +47,7 @@ name                    = "rex"
 [dependencies]
 # emacs-regexp-syntax.workspace = true
 # aho-corasick            = "1.1.2"
+hashbrown               = { version = "0.14", default-features = false, features = ["nightly", "inline-more"] }
 indexmap                = "2.2.5"
 # memchr                  = "2.7.1"
 memchr                  = { git = "https://github.com/cosmicexplorer/memchr", rev = "091a2ecbf84614bb215d3ec17acb856a8eca566d" }

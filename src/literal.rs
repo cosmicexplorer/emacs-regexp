@@ -19,10 +19,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 /* use aho_corasick::AhoCorasick; */
 use core::{alloc::Allocator, hash::BuildHasherDefault};
 
+use hashbrown::HashTable;
 use indexmap::IndexSet;
 use memchr::memmem;
 use rustc_hash::FxHasher;
-use xxhash_rust::xxh3::xxh3_128;
+use xxhash_rust::xxh3::xxh3_64;
 
 use crate::{
   continuation, state, ComponentOffset, DoublyAnchoredMatcher, IntraComponentInterval,
@@ -57,18 +58,20 @@ impl<'n> DoublyAnchoredMatcher<'n> for DoublyAnchoredSingleLiteral<'n> {
   }
 }
 
+type XXH3Output64 = u64;
+
 pub struct DoublyAnchoredMultipleLiteralsXXH3Vec<'n, A>
 where A: Allocator
 {
-  lits_with_hashes: Vec<(u128, &'n [u8]), A>,
+  lits_with_hashes: Vec<(XXH3Output64, &'n [u8]), A>,
 }
 impl<'n, A> DoublyAnchoredMultipleLiteralsXXH3Vec<'n, A>
 where A: Allocator
 {
   pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
-    let mut lits_with_hashes: Vec<(u128, &'n [u8]), A> = Vec::new_in(alloc);
+    let mut lits_with_hashes: Vec<(XXH3Output64, &'n [u8]), A> = Vec::new_in(alloc);
     for l in lits.into_iter() {
-      let h = xxh3_128(l);
+      let h = xxh3_64(l);
       lits_with_hashes.push((h, l));
     }
     Self { lits_with_hashes }
@@ -97,7 +100,7 @@ where A: Allocator
     'h: 'n,
   {
     let i = i.as_ref();
-    let h = xxh3_128(i);
+    let h = xxh3_64(i);
     self
       .lits_with_hashes
       .iter()
@@ -107,19 +110,34 @@ where A: Allocator
   }
 }
 
-pub struct DoublyAnchoredMultipleLiterals<'n> {
-  lits: IndexSet<&'n [u8], BuildHasherDefault<FxHasher>>,
+pub struct DoublyAnchoredMultipleLiteralsXXH3Set<'n, A>
+where A: Allocator
+{
+  lits_with_hashes: HashTable<&'n [u8], A>,
 }
-impl<'n> DoublyAnchoredMultipleLiterals<'n> {
-  pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self {
-    Self {
-      lits: lits.into_iter().collect(),
+impl<'n, A> DoublyAnchoredMultipleLiteralsXXH3Set<'n, A>
+where A: Allocator
+{
+  pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
+    let mut lits_with_hashes: HashTable<&'n [u8], A> = HashTable::new_in(alloc);
+    for l in lits.into_iter() {
+      let h = xxh3_64(l);
+      let _ = lits_with_hashes
+        .entry(h, |l2| l == *l2, |l2| xxh3_64(l2))
+        .or_insert(l);
     }
+    Self { lits_with_hashes }
+  }
+  pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
+  where A: Default {
+    Self::new_in(lits, A::default())
   }
 }
-impl<'n> DoublyAnchoredMatcher<'n> for DoublyAnchoredMultipleLiterals<'n> {
+impl<'n, A> DoublyAnchoredMatcher<'n> for DoublyAnchoredMultipleLiteralsXXH3Set<'n, A>
+where A: Allocator
+{
   type I = [u8];
-  type S = usize;
+  type S = &'n [u8];
   type X = ();
   fn invoke<'s, 'x, 'h>(
     &'s self,
@@ -134,7 +152,12 @@ impl<'n> DoublyAnchoredMatcher<'n> for DoublyAnchoredMultipleLiterals<'n> {
     'h: 'n,
   {
     let i = i.as_ref();
-    self.lits.get_index_of(i).into_iter()
+    let h = xxh3_64(i);
+    self
+      .lits_with_hashes
+      .find(h, |l| *l == i)
+      .map(|l| *l)
+      .into_iter()
   }
 }
 
@@ -470,14 +493,14 @@ mod test {
   }
 
   #[test]
-  fn doubly_multiple() {
+  fn doubly_multiple_set() {
     let s1 = b"asdf";
     let s1: &[u8] = s1.as_ref();
     let s2 = b"wow";
     let s2: &[u8] = s2.as_ref();
-    let m = DoublyAnchoredMultipleLiterals::new([s1, s2]);
-    assert_eq!(m.invoke(&mut (), &s1).collect::<Vec<_>>(), vec![0]);
-    assert_eq!(m.invoke(&mut (), &s2).collect::<Vec<_>>(), vec![1]);
+    let m = DoublyAnchoredMultipleLiteralsXXH3Set::<System>::new([s1, s2]);
+    assert_eq!(m.invoke(&mut (), &s1).collect::<Vec<_>>(), vec![s1]);
+    assert_eq!(m.invoke(&mut (), &s2).collect::<Vec<_>>(), vec![s2]);
 
     let s_wrong = b"f";
     let s_wrong: &[u8] = s_wrong.as_ref();
