@@ -536,5 +536,20 @@ pub mod literal {
       let s_wrong: &[u8] = s_wrong.as_ref();
       assert_eq!(m.invoke(&mut (), &s_wrong).count(), 0);
     }
+
+    #[test]
+    fn doubly_multiple() {
+      let s1 = b"asdf";
+      let s1: &[u8] = s1.as_ref();
+      let s2 = b"wow";
+      let s2: &[u8] = s2.as_ref();
+      let m = literal::DoublyAnchoredMultipleLiterals::new([s1, s2]);
+      assert_eq!(m.invoke(&mut (), &s1).collect::<Vec<_>>(), vec![0]);
+      assert_eq!(m.invoke(&mut (), &s2).collect::<Vec<_>>(), vec![1]);
+
+      let s_wrong = b"f";
+      let s_wrong: &[u8] = s_wrong.as_ref();
+      assert_eq!(m.invoke(&mut (), &s_wrong).count(), 0);
+    }
   }
 }
