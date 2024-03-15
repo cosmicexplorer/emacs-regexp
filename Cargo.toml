@@ -53,6 +53,8 @@ memchr                  = { git = "https://github.com/cosmicexplorer/memchr", re
 # memchr                  = { path = "/home/cosmicexplorer/tools/memchr" }
 rustc-hash              = "1.1.0"
 smallvec                = { version = "2.0.0-alpha.4", features = ["specialization", "may_dangle"] }
+# FIXME: hw acceleration for AVX2? https://docs.rs/xxhash-rust/latest/xxhash_rust/#hw-acceleration
+xxhash-rust             = { version = "0.8.10", features = ["xxh3", "const_xxh3"] }
 
 [build-dependencies]
 

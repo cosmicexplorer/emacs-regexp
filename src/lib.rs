@@ -22,6 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 /* Ensure any doctest warnings fails the doctest! */
 #![doc(test(attr(deny(warnings))))]
 #![feature(trait_alias)]
+#![feature(allocator_api)]
 
 pub mod literal;
 /* pub mod trie; */

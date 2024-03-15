@@ -10,6 +10,7 @@ dependencies = [
  "memchr",
  "rustc-hash",
  "smallvec",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -63,3 +64,9 @@ name = "smallvec"
 version = "2.0.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f345fed1f2a354f374f20970fb4faaf3e486cd7cfe95e5abfab6d073176a667"
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "927da81e25be1e1a2901d59b81b37dd2efd1fc9c9345a55007f09bf5a2d3ee03"

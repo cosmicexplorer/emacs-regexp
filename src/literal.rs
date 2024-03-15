@@ -17,16 +17,17 @@ You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 /* use aho_corasick::AhoCorasick; */
-use core::hash::BuildHasherDefault;
+use core::{alloc::Allocator, hash::BuildHasherDefault};
 
 use indexmap::IndexSet;
 use memchr::memmem;
 use rustc_hash::FxHasher;
+use xxhash_rust::xxh3::xxh3_128;
 
 use crate::{
-  continuation, state, ComponentOffset, DoublyAnchoredMatcher,
-  IntraComponentInterval, LeftAnchoredMatchResult, LeftAnchoredMatcher, RightAnchoredMatchResult,
-  RightAnchoredMatcher, UnanchoredMatchResult, UnanchoredMatcher,
+  continuation, state, ComponentOffset, DoublyAnchoredMatcher, IntraComponentInterval,
+  LeftAnchoredMatchResult, LeftAnchoredMatcher, RightAnchoredMatchResult, RightAnchoredMatcher,
+  UnanchoredMatchResult, UnanchoredMatcher,
 };
 
 pub struct DoublyAnchoredSingleLiteral<'n> {
@@ -53,6 +54,56 @@ impl<'n> DoublyAnchoredMatcher<'n> for DoublyAnchoredSingleLiteral<'n> {
   {
     let i = i.as_ref();
     if i == self.lit { Some(()) } else { None }.into_iter()
+  }
+}
+
+pub struct DoublyAnchoredMultipleLiteralsXXH3Vec<'n, A>
+where A: Allocator
+{
+  lits_with_hashes: Vec<(u128, &'n [u8]), A>,
+}
+impl<'n, A> DoublyAnchoredMultipleLiteralsXXH3Vec<'n, A>
+where A: Allocator
+{
+  pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
+    let mut lits_with_hashes: Vec<(u128, &'n [u8]), A> = Vec::new_in(alloc);
+    for l in lits.into_iter() {
+      let h = xxh3_128(l);
+      lits_with_hashes.push((h, l));
+    }
+    Self { lits_with_hashes }
+  }
+  pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
+  where A: Default {
+    Self::new_in(lits, A::default())
+  }
+}
+impl<'n, A> DoublyAnchoredMatcher<'n> for DoublyAnchoredMultipleLiteralsXXH3Vec<'n, A>
+where A: Allocator
+{
+  type I = [u8];
+  type S = &'n [u8];
+  type X = ();
+  fn invoke<'s, 'x, 'h>(
+    &'s self,
+    _x: &'x mut Self::X,
+    i: &'h impl AsRef<Self::I>,
+  ) -> impl Iterator<Item=Self::S>+'s+'x+'h
+  where
+    'x: 'n,
+    'n: 'x,
+    's: 'n,
+    'n: 'h,
+    'h: 'n,
+  {
+    let i = i.as_ref();
+    let h = xxh3_128(i);
+    self
+      .lits_with_hashes
+      .iter()
+      .filter(move |(h2, _)| h == *h2)
+      .map(|(_, l)| *l)
+      .filter(move |l| *l == i)
   }
 }
 
@@ -142,10 +193,10 @@ impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteral<'n> {
 }
 
 /* pub struct LeftAnchoredMultipleLiterals<'n> { */
-/*   trie: PrefixTrie<'n>, */
+/* trie: PrefixTrie<'n>, */
 /* } */
 /* impl<'n> LeftAnchoredMultipleLiterals<'n> { */
-/*   pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self {} */
+/* pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self {} */
 /* } */
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -387,6 +438,8 @@ impl<'n> UnanchoredMatcher<'n> for UnanchoredSingleLiteralMemMem<'n> {
 
 #[cfg(test)]
 mod test {
+  use std::alloc::System;
+
   use super::*;
 
   #[test]
@@ -395,6 +448,21 @@ mod test {
     let s: &[u8] = s.as_ref();
     let m = DoublyAnchoredSingleLiteral::new(s);
     assert_eq!(m.invoke(&mut (), &s).count(), 1);
+
+    let s_wrong = b"f";
+    let s_wrong: &[u8] = s_wrong.as_ref();
+    assert_eq!(m.invoke(&mut (), &s_wrong).count(), 0);
+  }
+
+  #[test]
+  fn doubly_multiple_vec() {
+    let s1 = b"asdf";
+    let s1: &[u8] = s1.as_ref();
+    let s2 = b"wow";
+    let s2: &[u8] = s2.as_ref();
+    let m = DoublyAnchoredMultipleLiteralsXXH3Vec::<System>::new([s1, s2]);
+    assert_eq!(m.invoke(&mut (), &s1).collect::<Vec<_>>(), vec![s1]);
+    assert_eq!(m.invoke(&mut (), &s2).collect::<Vec<_>>(), vec![s2]);
 
     let s_wrong = b"f";
     let s_wrong: &[u8] = s_wrong.as_ref();
