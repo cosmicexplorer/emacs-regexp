@@ -175,6 +175,7 @@ pub trait UnanchoredMatcher<'n> {
 }
 
 pub mod literal {
+  /* use aho_corasick::AhoCorasick; */
   use indexmap::IndexSet;
   use memchr::memmem;
 
@@ -358,14 +359,13 @@ pub mod literal {
     }
   }
 
-  struct SingleLiteralRabinKarpIterator<'h, 'n> {
+  struct SingleLiteralRabinKarpInnerMatchIterator<'h, 'n> {
     finder: memmem::CompiledRabinKarpFinder<'n>,
     haystack: &'h [u8],
     pos: usize,
   }
-  impl<'h, 'n> Iterator for SingleLiteralRabinKarpIterator<'h, 'n> {
-    type Item =
-      UnanchoredMatchResult<(), LeftLiteralContinuation<'n>, RightLiteralContinuation<'n>>;
+  impl<'h, 'n> Iterator for SingleLiteralRabinKarpInnerMatchIterator<'h, 'n> {
+    type Item = IntraComponentInterval;
 
     fn next(&mut self) -> Option<Self::Item> {
       let haystack = self.haystack.get(self.pos..)?;
@@ -379,7 +379,7 @@ pub mod literal {
         left: ComponentOffset(pos.try_into().unwrap()),
         right: ComponentOffset((pos + self.finder.needle().len()).try_into().unwrap()),
       };
-      Some(UnanchoredMatchResult::CompleteMatch((), int))
+      Some(int)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -426,11 +426,14 @@ pub mod literal {
       'n: 'h,
       'h: 'n,
     {
-      SingleLiteralRabinKarpIterator {
+      let inner = SingleLiteralRabinKarpInnerMatchIterator {
         finder: self.finder.as_ref(),
         haystack: i,
         pos: 0,
       }
+      .map(|int| UnanchoredMatchResult::CompleteMatch((), int));
+      /* let left = */
+      inner
     }
   }
 
@@ -448,15 +451,14 @@ pub mod literal {
 
   impl state::State for memmem::PrefilterState {}
 
-  struct SingleLiteralMemMemIterator<'x, 'h, 'n> {
+  struct SingleLiteralMemMemInnerMatchIterator<'x, 'h, 'n> {
     finder: memmem::Finder<'n>,
     prestate: &'x mut memmem::PrefilterState,
     haystack: &'h [u8],
     pos: usize,
   }
-  impl<'x, 'h, 'n> Iterator for SingleLiteralMemMemIterator<'x, 'h, 'n> {
-    type Item =
-      UnanchoredMatchResult<(), LeftLiteralContinuation<'n>, RightLiteralContinuation<'n>>;
+  impl<'x, 'h, 'n> Iterator for SingleLiteralMemMemInnerMatchIterator<'x, 'h, 'n> {
+    type Item = IntraComponentInterval;
 
     fn next(&mut self) -> Option<Self::Item> {
       let haystack = self.haystack.get(self.pos..)?;
@@ -470,7 +472,7 @@ pub mod literal {
         left: ComponentOffset(pos.try_into().unwrap()),
         right: ComponentOffset((pos + self.finder.needle().len()).try_into().unwrap()),
       };
-      Some(UnanchoredMatchResult::CompleteMatch((), int))
+      Some(int)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -517,12 +519,13 @@ pub mod literal {
       'n: 'h,
       'h: 'n,
     {
-      SingleLiteralMemMemIterator {
+      SingleLiteralMemMemInnerMatchIterator {
         finder: self.finder.as_ref(),
         prestate: x,
         haystack: i,
         pos: 0,
       }
+      .map(|int| UnanchoredMatchResult::CompleteMatch((), int))
     }
   }
 
