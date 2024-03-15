@@ -7,6 +7,7 @@ name = "emacs-regexp"
 version = "0.0.0"
 dependencies = [
  "indexmap",
+ "memchr",
 ]
 
 [[package]]
@@ -37,6 +38,11 @@ dependencies = [
  "equivalent",
  "hashbrown",
 ]
+
+[[package]]
+name = "memchr"
+version = "2.7.1"
+source = "git+https://github.com/cosmicexplorer/memchr?rev=6bdf19bafa02811205929b589d279a13284a1a9e#6bdf19bafa02811205929b589d279a13284a1a9e"
 
 [[package]]
 name = "regex-syntax"

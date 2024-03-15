@@ -70,11 +70,25 @@ pub mod alphabet {
   pub trait Symbol = Hash+Eq;
 }
 
-pub trait DoublyAnchoredMatcher {
+pub mod state {
+  pub trait State {}
+
+  impl State for () {}
+}
+
+pub trait DoublyAnchoredMatcher<'n> {
   type I: input::Input;
   type S: alphabet::Symbol;
-  type It: Iterator<Item=Self::S>;
-  fn invoke(&self, i: Self::I) -> Self::It;
+  type X: state::State;
+  fn invoke<'s, 'x, 'h>(
+    &'s self,
+    x: &'x mut Self::X,
+    i: &'h Self::I,
+  ) -> impl Iterator<Item=Self::S>+'s+'x+'h
+  where
+    'x: 'n,
+    'n: 'x,
+    's: 'n;
 }
 
 pub enum LeftAnchoredMatchResult<S, C> {
@@ -82,12 +96,20 @@ pub enum LeftAnchoredMatchResult<S, C> {
   PartialMatch(S, C),
 }
 
-pub trait LeftAnchoredMatcher {
+pub trait LeftAnchoredMatcher<'n> {
   type I: input::Input;
   type S: alphabet::Symbol;
+  type X: state::State;
   type C: continuation::Continuation;
-  type It: Iterator<Item=LeftAnchoredMatchResult<Self::S, Self::C>>;
-  fn invoke(&self, i: Self::I) -> Self::It;
+  fn invoke<'s, 'x, 'h>(
+    &'s self,
+    x: &'x mut Self::X,
+    i: &'h Self::I,
+  ) -> impl Iterator<Item=LeftAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
+  where
+    'x: 'n,
+    'n: 'x,
+    's: 'n;
 }
 
 pub enum RightAnchoredMatchResult<S, C> {
@@ -95,12 +117,20 @@ pub enum RightAnchoredMatchResult<S, C> {
   PartialMatch(S, C),
 }
 
-pub trait RightAnchoredMatcher {
+pub trait RightAnchoredMatcher<'n> {
   type I: input::Input;
   type S: alphabet::Symbol;
+  type X: state::State;
   type C: continuation::Continuation;
-  type It: Iterator<Item=RightAnchoredMatchResult<Self::S, Self::C>>;
-  fn invoke(&self, i: Self::I) -> Self::It;
+  fn invoke<'s, 'x, 'h>(
+    &'s self,
+    x: &'x mut Self::X,
+    i: &'h Self::I,
+  ) -> impl Iterator<Item=RightAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
+  where
+    'x: 'n,
+    'n: 'x,
+    's: 'n;
 }
 
 pub struct IntraComponentInterval {
@@ -115,70 +145,108 @@ pub enum UnanchoredMatchResult<S, LC, RC> {
   PartialBoth(S, LC, RC),
 }
 
-pub trait UnanchoredMatcher {
+pub trait UnanchoredMatcher<'n> {
   type I: input::Input;
   type S: alphabet::Symbol;
+  type X: state::State;
   type LC: continuation::Continuation;
   type RC: continuation::Continuation;
-  type It: Iterator<Item=UnanchoredMatchResult<Self::S, Self::LC, Self::RC>>;
-  fn invoke(&self, i: Self::I) -> Self::It;
+  fn invoke<'s, 'x, 'h>(
+    &'s self,
+    x: &'x mut Self::X,
+    i: &'h Self::I,
+  ) -> impl Iterator<Item=UnanchoredMatchResult<Self::S, Self::LC, Self::RC>>+'s+'x+'h
+  where
+    'x: 'n,
+    'n: 'x,
+    's: 'n;
 }
 
 pub mod literal {
   use indexmap::IndexSet;
+  use memchr::memmem;
 
   use super::*;
 
-  pub struct DoublyAnchoredSingleLiteral<'a> {
-    lit: &'a [u8],
+  pub struct DoublyAnchoredSingleLiteral<'n> {
+    lit: &'n [u8],
   }
-  impl<'a> DoublyAnchoredSingleLiteral<'a> {
-    pub fn new(lit: &'a [u8]) -> Self { Self { lit } }
+  impl<'n> DoublyAnchoredSingleLiteral<'n> {
+    pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
   }
-  impl<'a> DoublyAnchoredMatcher for DoublyAnchoredSingleLiteral<'a> {
-    type I = &'a [u8];
+  impl<'n> DoublyAnchoredMatcher<'n> for DoublyAnchoredSingleLiteral<'n> {
+    type I = &'n [u8];
     type S = ();
-    type It = <Option<Self::S> as IntoIterator>::IntoIter;
-    fn invoke(&self, i: Self::I) -> Self::It {
-      if i == self.lit { Some(()) } else { None }.into_iter()
+    type X = ();
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=Self::S>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+    {
+      if *i == self.lit { Some(()) } else { None }.into_iter()
     }
   }
 
-  pub struct DoublyAnchoredMultipleLiterals<'a> {
-    lits: IndexSet<&'a [u8]>,
+  pub struct DoublyAnchoredMultipleLiterals<'n> {
+    lits: IndexSet<&'n [u8]>,
   }
-  impl<'a> DoublyAnchoredMultipleLiterals<'a> {
-    pub fn new(lits: impl IntoIterator<Item=&'a [u8]>) -> Self {
+  impl<'n> DoublyAnchoredMultipleLiterals<'n> {
+    pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self {
       Self {
         lits: lits.into_iter().collect(),
       }
     }
   }
-  impl<'a> DoublyAnchoredMatcher for DoublyAnchoredMultipleLiterals<'a> {
-    type I = &'a [u8];
+  impl<'n> DoublyAnchoredMatcher<'n> for DoublyAnchoredMultipleLiterals<'n> {
+    type I = &'n [u8];
     type S = usize;
-    type It = <Option<Self::S> as IntoIterator>::IntoIter;
-    fn invoke(&self, i: Self::I) -> Self::It { self.lits.get_index_of(i).into_iter() }
+    type X = ();
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=Self::S>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+    {
+      self.lits.get_index_of(i).into_iter()
+    }
   }
 
-  pub struct LeftLiteralContinuation<'a> {
-    pub rest: &'a [u8],
+  pub struct LeftLiteralContinuation<'n> {
+    pub rest: &'n [u8],
   }
-  impl<'a> continuation::Continuation for LeftLiteralContinuation<'a> {}
+  impl<'n> continuation::Continuation for LeftLiteralContinuation<'n> {}
 
-  pub struct LeftAnchoredSingleLiteral<'a> {
-    lit: &'a [u8],
+  pub struct LeftAnchoredSingleLiteral<'n> {
+    lit: &'n [u8],
   }
-  impl<'a> LeftAnchoredSingleLiteral<'a> {
-    pub fn new(lit: &'a [u8]) -> Self { Self { lit } }
+  impl<'n> LeftAnchoredSingleLiteral<'n> {
+    pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
   }
-  impl<'a> LeftAnchoredMatcher for LeftAnchoredSingleLiteral<'a> {
-    type I = &'a [u8];
+  impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteral<'n> {
+    type I = &'n [u8];
     type S = ();
-    type C = LeftLiteralContinuation<'a>;
-    type It = <Option<LeftAnchoredMatchResult<Self::S, Self::C>> as IntoIterator>::IntoIter;
-    fn invoke(&self, i: Self::I) -> Self::It {
-      if i.len() >= self.lit.len() {
+    type X = ();
+    type C = LeftLiteralContinuation<'n>;
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=LeftAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+    {
+      let ret: Option<LeftAnchoredMatchResult<Self::S, Self::C>> = if i.len() >= self.lit.len() {
         if i.starts_with(self.lit) {
           Some(LeftAnchoredMatchResult::CompleteMatch(
             (),
@@ -198,28 +266,37 @@ pub mod literal {
         } else {
           None
         }
-      }
-      .into_iter()
+      };
+      ret.into_iter()
     }
   }
 
-  pub struct RightLiteralContinuation<'a> {
-    pub rest: &'a [u8],
+  pub struct RightLiteralContinuation<'n> {
+    pub rest: &'n [u8],
   }
-  impl<'a> continuation::Continuation for RightLiteralContinuation<'a> {}
+  impl<'n> continuation::Continuation for RightLiteralContinuation<'n> {}
 
-  pub struct RightAnchoredSingleLiteral<'a> {
-    lit: &'a [u8],
+  pub struct RightAnchoredSingleLiteral<'n> {
+    lit: &'n [u8],
   }
-  impl<'a> RightAnchoredSingleLiteral<'a> {
-    pub fn new(lit: &'a [u8]) -> Self { Self { lit } }
+  impl<'n> RightAnchoredSingleLiteral<'n> {
+    pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
   }
-  impl<'a> RightAnchoredMatcher for RightAnchoredSingleLiteral<'a> {
-    type I = &'a [u8];
+  impl<'n> RightAnchoredMatcher<'n> for RightAnchoredSingleLiteral<'n> {
+    type I = &'n [u8];
     type S = ();
-    type C = RightLiteralContinuation<'a>;
-    type It = <Option<RightAnchoredMatchResult<Self::S, Self::C>> as IntoIterator>::IntoIter;
-    fn invoke(&self, i: Self::I) -> Self::It {
+    type X = ();
+    type C = RightLiteralContinuation<'n>;
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=RightAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+    {
       if i.len() >= self.lit.len() {
         if i.ends_with(self.lit) {
           Some(RightAnchoredMatchResult::CompleteMatch(
@@ -242,6 +319,182 @@ pub mod literal {
         }
       }
       .into_iter()
+    }
+  }
+
+  /* TODO: backwards? */
+  pub struct UnanchoredSingleLiteralRabinKarp<'n> {
+    finder: memmem::CompiledRabinKarpFinder<'n>,
+  }
+  impl<'n> UnanchoredSingleLiteralRabinKarp<'n> {
+    pub fn new(lit: &'n [u8]) -> Self {
+      Self {
+        finder: memmem::CompiledRabinKarpFinder::for_needle(lit),
+      }
+    }
+  }
+
+  struct SingleLiteralRabinKarpIterator<'h, 'n> {
+    finder: memmem::CompiledRabinKarpFinder<'n>,
+    haystack: &'h [u8],
+    pos: usize,
+  }
+  impl<'h, 'n> Iterator for SingleLiteralRabinKarpIterator<'h, 'n> {
+    type Item =
+      UnanchoredMatchResult<(), LeftLiteralContinuation<'n>, RightLiteralContinuation<'n>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+      let haystack = self.haystack.get(self.pos..)?;
+      let idx = self.finder.find(haystack)?;
+      /* Iterate to the beginning of the match. */
+      let pos = self.pos + idx;
+      /* NB: Now go exactly one past, so we can find overlapping matches! */
+      self.pos = pos + 1;
+
+      let int = IntraComponentInterval {
+        left: ComponentOffset(pos.try_into().unwrap()),
+        right: ComponentOffset((pos + self.finder.needle().len()).try_into().unwrap()),
+      };
+      Some(UnanchoredMatchResult::CompleteMatch((), int))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+      let remaining_haystack_len = match self.haystack.len().checked_sub(self.pos) {
+        None => return (0, Some(0)),
+        Some(haystack_len) => haystack_len,
+      };
+      let needle_len = self.finder.needle().len();
+      if needle_len == 0 {
+        // Empty needles always succeed and match at every point
+        // (including the very end)
+        return (
+          remaining_haystack_len.saturating_add(1),
+          remaining_haystack_len.checked_add(1),
+        );
+      }
+      /* Can match once if needle_len == haystack_len, then once further for
+      each additional byte.
+      This is many more than the quotient which is used in FindIter, since it
+      does not check for
+      overlapping matches. */
+      (
+        0,
+        Some(remaining_haystack_len.saturating_sub(needle_len - 1)),
+      )
+    }
+  }
+
+  impl<'n> UnanchoredMatcher<'n> for UnanchoredSingleLiteralRabinKarp<'n> {
+    type I = &'n [u8];
+    type S = ();
+    type X = ();
+    type LC = LeftLiteralContinuation<'n>;
+    type RC = RightLiteralContinuation<'n>;
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=UnanchoredMatchResult<Self::S, Self::LC, Self::RC>>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+    {
+      SingleLiteralRabinKarpIterator {
+        finder: self.finder.as_ref(),
+        haystack: i,
+        pos: 0,
+      }
+    }
+  }
+
+  /* TODO: backwards? */
+  pub struct UnanchoredSingleLiteralMemMem<'n> {
+    finder: memmem::Finder<'n>,
+  }
+  impl<'n> UnanchoredSingleLiteralMemMem<'n> {
+    pub fn new(lit: &'n [u8]) -> Self {
+      Self {
+        finder: memmem::Finder::new(lit),
+      }
+    }
+  }
+
+  impl state::State for memmem::PrefilterState {}
+
+  struct SingleLiteralMemMemIterator<'x, 'h, 'n> {
+    finder: memmem::Finder<'n>,
+    prestate: &'x mut memmem::PrefilterState,
+    haystack: &'h [u8],
+    pos: usize,
+  }
+  impl<'x, 'h, 'n> Iterator for SingleLiteralMemMemIterator<'x, 'h, 'n> {
+    type Item =
+      UnanchoredMatchResult<(), LeftLiteralContinuation<'n>, RightLiteralContinuation<'n>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+      let haystack = self.haystack.get(self.pos..)?;
+      let idx = self.finder.find_state(self.prestate, haystack)?;
+      /* Iterate to the beginning of the match. */
+      let pos = self.pos + idx;
+      /* NB: Now go exactly one past, so we can find overlapping matches! */
+      self.pos = pos + 1;
+
+      let int = IntraComponentInterval {
+        left: ComponentOffset(pos.try_into().unwrap()),
+        right: ComponentOffset((pos + self.finder.needle().len()).try_into().unwrap()),
+      };
+      Some(UnanchoredMatchResult::CompleteMatch((), int))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+      let remaining_haystack_len = match self.haystack.len().checked_sub(self.pos) {
+        None => return (0, Some(0)),
+        Some(haystack_len) => haystack_len,
+      };
+      let needle_len = self.finder.needle().len();
+      if needle_len == 0 {
+        // Empty needles always succeed and match at every point
+        // (including the very end)
+        return (
+          remaining_haystack_len.saturating_add(1),
+          remaining_haystack_len.checked_add(1),
+        );
+      }
+      /* Can match once if needle_len == haystack_len, then once further for
+      each additional byte.
+      This is many more than the quotient which is used in FindIter, since it
+      does not check for
+      overlapping matches. */
+      (
+        0,
+        Some(remaining_haystack_len.saturating_sub(needle_len - 1)),
+      )
+    }
+  }
+
+  impl<'n> UnanchoredMatcher<'n> for UnanchoredSingleLiteralMemMem<'n> {
+    type I = &'n [u8];
+    type S = ();
+    type X = memmem::PrefilterState;
+    type LC = LeftLiteralContinuation<'n>;
+    type RC = RightLiteralContinuation<'n>;
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=UnanchoredMatchResult<Self::S, Self::LC, Self::RC>>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+    {
+      SingleLiteralMemMemIterator {
+        finder: self.finder.as_ref(),
+        prestate: x,
+        haystack: i,
+        pos: 0,
+      }
     }
   }
 }

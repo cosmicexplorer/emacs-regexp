@@ -49,6 +49,8 @@ name                    = "rex"
 # aho-corasick            = "1.1.2"
 indexmap                = "2.2.5"
 # memchr                  = "2.7.1"
+memchr                  = { git = "https://github.com/cosmicexplorer/memchr", rev = "6bdf19bafa02811205929b589d279a13284a1a9e" }
+# memchr                  = { path = "/home/cosmicexplorer/tools/memchr" }
 
 [build-dependencies]
 
