@@ -20,7 +20,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 use core::{alloc::Allocator, hash::BuildHasherDefault};
 
 use hashbrown::HashTable;
-use indexmap::IndexSet;
 use memchr::memmem;
 use rustc_hash::FxHasher;
 use xxhash_rust::xxh3::xxh3_64;

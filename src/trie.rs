@@ -16,73 +16,96 @@ GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
-use core::hash::{BuildHasher, BuildHasherDefault, Hash};
+use core::{
+  alloc::Allocator,
+  cell::UnsafeCell,
+  hash::{BuildHasher, BuildHasherDefault, Hash},
+};
 
-use indexmap::IndexMap;
+use hashbrown::HashMap;
 use rustc_hash::FxHasher;
 
-#[derive(Default)]
-struct SortedMap<K, V, S>(IndexMap<K, V, S>);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct NodeIndex(pub usize);
 
-impl<K, V, S> SortedMap<K, V, S>
-where S: BuildHasher+Default
+pub struct PrefixTrie<'n, A>
+where A: Allocator
 {
-  pub fn sort_entries(entries: impl IntoIterator<Item=(K, V)>) -> Self
-  where K: Ord+Eq+Hash+Copy {
-    let mut entries: Vec<(K, V)> = entries.into_iter().collect();
-    /* TODO: rayon? */
-    /* TODO: don't require K to be Copy? */
-    entries.sort_unstable_by_key(|v| v.0);
-    Self(entries.into_iter().collect())
-  }
+  nodes: Vec<Node<u8, &'n [u8], A>, A>,
 }
 
-#[derive(Default)]
-struct Node<'t, K, ID> {
-  end: Option<ID>,
-  branches: SortedMap<K, Node<'t, K, ID>, BuildHasherDefault<FxHasher>>,
+struct Node<K, Src, A>
+where A: Allocator
+{
+  end: Option<Src>,
+  branches: HashMap<K, NodeIndex, BuildHasherDefault<FxHasher>, A>,
 }
 
-pub struct PrefixTrie<'t> {
-  node: Node<'t, u8, &'t [u8]>,
-}
-
-impl<'t> PrefixTrie<'t> {
-  pub fn traverse_literals(lits: impl IntoIterator<Item=&'t [u8]>) -> Self {
+impl<K, Src, A> Node<K, Src, A>
+where A: Allocator
+{
+  pub fn new_in(alloc: A) -> Self {
     Self {
-      node: Self::recurse_literals(lits.into_iter().map(|l| (l, l))),
+      end: None,
+      branches: HashMap::with_hasher_in(BuildHasherDefault::<FxHasher>::default(), alloc),
     }
   }
 
-  fn recurse_literals(
-    lits: impl IntoIterator<Item=(&'t [u8], &'t [u8])>,
-  ) -> Node<'t, u8, &'t [u8]> {
-    let ret: Node<'t, K, ID> = Default::default();
-    let mut todo: Vec<(Node<'t, K, ID>, Vec<(&'t [u8], &'t [u8])>)> =
-      vec![(ret, lits.into_iter().collect())];
+  pub fn is_empty(&self) -> bool { self.end.is_none() && self.branches.is_empty() }
+}
 
-    while let Some((cur, next)) = todo.pop() {
-      assert!(!next.is_empty());
+impl<'n, A> PrefixTrie<'n, A>
+where A: Allocator+Clone
+{
+  pub fn traverse(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
+    let mut nodes: UnsafeCell<Vec<Node<u8, &'n [u8], A>, A>> =
+      UnsafeCell::new(Vec::with_capacity_in(1, alloc.clone()));
+    let ret = Node::new_in(alloc.clone());
+    nodes.get_mut().push(ret);
 
-      let mut end: Vec<&'t [u8]> = Vec::new();
-      let mut entries: IndexMap<u8, Vec<(&'t [u8], &'t [u8])>> = IndexMap::new();
-      for (l, e) in lits.into_iter().map(|l| (l, l.split_first())) {
-        match e {
+    let mut lits_vec: Vec<(&'n [u8], &'n [u8]), A> = Vec::new_in(alloc.clone());
+    for l in lits.into_iter() {
+      lits_vec.push((l, l));
+    }
+
+    let mut todo: Vec<(NodeIndex, Vec<(&'n [u8], &'n [u8]), A>), A> =
+      Vec::with_capacity_in(1, alloc.clone());
+    todo.push((NodeIndex(unsafe { &*nodes.get() }.len() - 1), lits_vec));
+
+    while let Some((NodeIndex(cur_node), lits)) = todo.pop() {
+      let cur_node = unsafe { &mut *nodes.get() }.get_mut(cur_node).unwrap();
+      assert!(cur_node.is_empty());
+
+      let mut branches: HashMap<u8, Vec<(&'n [u8], &'n [u8]), A>, BuildHasherDefault<FxHasher>, A> =
+        HashMap::with_hasher_in(BuildHasherDefault::<FxHasher>::default(), alloc.clone());
+
+      for (src, rest) in lits.into_iter() {
+        match rest.split_first() {
           None => {
-            end.push(l);
+            cur_node.end = Some(src);
           },
-          Some((key, rest)) => {
-            entries.entry(*key).or_default().push((l, rest));
+          Some((first, rest)) => {
+            branches
+              .entry(*first)
+              .or_insert_with(|| Vec::new_in(alloc.clone()))
+              .push((src, rest));
           },
         }
       }
-      let entries: Vec<_> = entries.drain(..).collect();
-      let mut sorted = SortedMap::sort_entries(entries.iter().map(|(k, _)| (k, Branch::empty())));
+
+      for (key, rest) in branches.into_iter() {
+        let subnode = Node::new_in(alloc.clone());
+        unsafe { &mut *nodes.get() }.push(subnode);
+        let sub_node = NodeIndex(unsafe { &*nodes.get() }.len() - 1);
+
+        todo.push((sub_node, rest));
+
+        cur_node.branches.insert_unique_unchecked(key, sub_node);
+      }
+    }
+
+    Self {
+      nodes: nodes.into_inner(),
     }
   }
 }
-
-/* FIXME: for strings too! */
-/* impl<'n> PrefixTrie<'n> { */
-/* pub fn build(lits: impl IntoIterator<Item=&'n [u8]>) -> Self {} */
-/* } */

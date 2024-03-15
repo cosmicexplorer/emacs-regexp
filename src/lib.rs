@@ -18,14 +18,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 #![warn(rustdoc::missing_crate_level_docs)]
 // #![warn(missing_docs)]
-#![deny(unsafe_code)]
 /* Ensure any doctest warnings fails the doctest! */
 #![doc(test(attr(deny(warnings))))]
 #![feature(trait_alias)]
 #![feature(allocator_api)]
 
 pub mod literal;
-/* pub mod trie; */
+pub mod trie;
 
 pub mod input {
   pub trait Input {}
