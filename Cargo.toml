@@ -52,6 +52,7 @@ indexmap                = "2.2.5"
 memchr                  = { git = "https://github.com/cosmicexplorer/memchr", rev = "091a2ecbf84614bb215d3ec17acb856a8eca566d" }
 # memchr                  = { path = "/home/cosmicexplorer/tools/memchr" }
 rustc-hash              = "1.1.0"
+smallvec                = { version = "2.0.0-alpha.4", features = ["specialization", "may_dangle"] }
 
 [build-dependencies]
 

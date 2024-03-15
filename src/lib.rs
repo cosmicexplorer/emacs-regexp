@@ -24,6 +24,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(trait_alias)]
 
 pub mod literal;
+/* pub mod trie; */
 
 pub mod input {
   pub trait Input {}

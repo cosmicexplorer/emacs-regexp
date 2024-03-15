@@ -24,9 +24,9 @@ use memchr::memmem;
 use rustc_hash::FxHasher;
 
 use crate::{
-  continuation, state, ComponentOffset, DoublyAnchoredMatcher, IntraComponentInterval,
-  LeftAnchoredMatchResult, LeftAnchoredMatcher, RightAnchoredMatchResult, RightAnchoredMatcher,
-  UnanchoredMatchResult, UnanchoredMatcher,
+  continuation, state, ComponentOffset, DoublyAnchoredMatcher,
+  IntraComponentInterval, LeftAnchoredMatchResult, LeftAnchoredMatcher, RightAnchoredMatchResult,
+  RightAnchoredMatcher, UnanchoredMatchResult, UnanchoredMatcher,
 };
 
 pub struct DoublyAnchoredSingleLiteral<'n> {
@@ -140,6 +140,13 @@ impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteral<'n> {
     .into_iter()
   }
 }
+
+/* pub struct LeftAnchoredMultipleLiterals<'n> { */
+/*   trie: PrefixTrie<'n>, */
+/* } */
+/* impl<'n> LeftAnchoredMultipleLiterals<'n> { */
+/*   pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self {} */
+/* } */
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RightLiteralContinuation<'n> {
