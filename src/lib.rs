@@ -606,6 +606,99 @@ pub mod literal {
         })
       ]);
       assert_eq!(rm.invoke(&mut (), &s_wrong).count(), 0);
+
+      /* TODO: multiple matches! */
     }
+  }
+
+  #[test]
+  fn unanchored_rabin_karp() {
+    let s1 = b"asdf";
+    let s1: &[u8] = s1.as_ref();
+
+    let sl = b"asdfeee";
+    let sl: &[u8] = sl.as_ref();
+    let sl2 = b"a";
+    let sl2: &[u8] = sl2.as_ref();
+
+    let sr = b"eeeasdf";
+    let sr: &[u8] = sr.as_ref();
+    let sr2 = b"f";
+    let sr2: &[u8] = sr2.as_ref();
+
+    let s_wrong = b"g";
+    let s_wrong: &[u8] = s_wrong.as_ref();
+
+    let m = UnanchoredSingleLiteralRabinKarp::new(s1);
+
+    assert_eq!(m.invoke(&mut (), &s1).collect::<Vec<_>>(), vec![
+      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
+        left: ComponentOffset(0),
+        right: ComponentOffset(4),
+      })
+    ]);
+    assert_eq!(m.invoke(&mut (), &sl).collect::<Vec<_>>(), vec![
+      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
+        left: ComponentOffset(0),
+        right: ComponentOffset(4),
+      })
+    ]);
+    /* FIXME: partial matches for unanchored! */
+    assert_eq!(m.invoke(&mut (), &sl2).count(), 0);
+    assert_eq!(m.invoke(&mut (), &sr).collect::<Vec<_>>(), vec![
+      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
+        left: ComponentOffset(3),
+        right: ComponentOffset(7),
+      })
+    ]);
+    /* FIXME: partial matches for unanchored! */
+    assert_eq!(m.invoke(&mut (), &sr2).count(), 0);
+    assert_eq!(m.invoke(&mut (), &s_wrong).count(), 0);
+  }
+
+  #[test]
+  fn unanchored_memmem() {
+    let s1 = b"asdf";
+    let s1: &[u8] = s1.as_ref();
+
+    let sl = b"asdfeee";
+    let sl: &[u8] = sl.as_ref();
+    let sl2 = b"a";
+    let sl2: &[u8] = sl2.as_ref();
+
+    let sr = b"eeeasdf";
+    let sr: &[u8] = sr.as_ref();
+    let sr2 = b"f";
+    let sr2: &[u8] = sr2.as_ref();
+
+    let s_wrong = b"g";
+    let s_wrong: &[u8] = s_wrong.as_ref();
+
+    let m = UnanchoredSingleLiteralMemMem::new(s1);
+    let mut prestate = memmem::PrefilterState::new();
+
+    assert_eq!(m.invoke(&mut prestate, &s1).collect::<Vec<_>>(), vec![
+      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
+        left: ComponentOffset(0),
+        right: ComponentOffset(4),
+      })
+    ]);
+    assert_eq!(m.invoke(&mut prestate, &sl).collect::<Vec<_>>(), vec![
+      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
+        left: ComponentOffset(0),
+        right: ComponentOffset(4),
+      })
+    ]);
+    /* FIXME: partial matches for unanchored! */
+    assert_eq!(m.invoke(&mut prestate, &sl2).count(), 0);
+    assert_eq!(m.invoke(&mut prestate, &sr).collect::<Vec<_>>(), vec![
+      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
+        left: ComponentOffset(3),
+        right: ComponentOffset(7),
+      })
+    ]);
+    /* FIXME: partial matches for unanchored! */
+    assert_eq!(m.invoke(&mut prestate, &sr2).count(), 0);
+    assert_eq!(m.invoke(&mut prestate, &s_wrong).count(), 0);
   }
 }
