@@ -93,6 +93,7 @@ pub trait DoublyAnchoredMatcher<'n> {
     'h: 'n;
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LeftAnchoredMatchResult<S, C> {
   CompleteMatch(S, ComponentOffset),
   PartialMatch(S, C),
@@ -116,6 +117,7 @@ pub trait LeftAnchoredMatcher<'n> {
     'h: 'n;
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RightAnchoredMatchResult<S, C> {
   CompleteMatch(S, ComponentOffset),
   PartialMatch(S, C),
@@ -139,11 +141,13 @@ pub trait RightAnchoredMatcher<'n> {
     'h: 'n;
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IntraComponentInterval {
   pub left: ComponentOffset,
   pub right: ComponentOffset,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UnanchoredMatchResult<S, LC, RC> {
   CompleteMatch(S, IntraComponentInterval),
   PartialLeftOnly(S, LC, ComponentOffset),
@@ -234,6 +238,7 @@ pub mod literal {
     }
   }
 
+  #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub struct LeftLiteralContinuation<'n> {
     pub rest: &'n [u8],
   }
@@ -262,7 +267,7 @@ pub mod literal {
       'n: 'h,
       'h: 'n,
     {
-      let ret: Option<LeftAnchoredMatchResult<Self::S, Self::C>> = if i.len() >= self.lit.len() {
+      if i.len() >= self.lit.len() {
         if i.starts_with(self.lit) {
           Some(LeftAnchoredMatchResult::CompleteMatch(
             (),
@@ -282,11 +287,12 @@ pub mod literal {
         } else {
           None
         }
-      };
-      ret.into_iter()
+      }
+      .into_iter()
     }
   }
 
+  #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub struct RightLiteralContinuation<'n> {
     pub rest: &'n [u8],
   }
@@ -550,6 +556,56 @@ pub mod literal {
       let s_wrong = b"f";
       let s_wrong: &[u8] = s_wrong.as_ref();
       assert_eq!(m.invoke(&mut (), &s_wrong).count(), 0);
+    }
+
+    #[test]
+    fn lr_match() {
+      let s1 = b"asdf";
+      let s1: &[u8] = s1.as_ref();
+
+      let lm = literal::LeftAnchoredSingleLiteral::new(s1);
+      let rm = literal::RightAnchoredSingleLiteral::new(s1);
+
+      let sl = b"asdfeee";
+      let sl: &[u8] = sl.as_ref();
+      let sl2 = b"a";
+      let sl2: &[u8] = sl2.as_ref();
+
+      let sr = b"eeeasdf";
+      let sr: &[u8] = sr.as_ref();
+      let sr2 = b"f";
+      let sr2: &[u8] = sr2.as_ref();
+
+      let s_wrong = b"g";
+      let s_wrong: &[u8] = s_wrong.as_ref();
+
+      assert_eq!(lm.invoke(&mut (), &s1).collect::<Vec<_>>(), vec![
+        LeftAnchoredMatchResult::CompleteMatch((), ComponentOffset(4))
+      ]);
+      assert_eq!(lm.invoke(&mut (), &sl).collect::<Vec<_>>(), vec![
+        LeftAnchoredMatchResult::CompleteMatch((), ComponentOffset(4))
+      ]);
+      assert_eq!(lm.invoke(&mut (), &sl2).collect::<Vec<_>>(), vec![
+        LeftAnchoredMatchResult::PartialMatch((), LeftLiteralContinuation {
+          rest: b"sdf".as_ref()
+        })
+      ]);
+      assert_eq!(lm.invoke(&mut (), &sr).count(), 0);
+      assert_eq!(lm.invoke(&mut (), &s_wrong).count(), 0);
+
+      assert_eq!(rm.invoke(&mut (), &s1).collect::<Vec<_>>(), vec![
+        RightAnchoredMatchResult::CompleteMatch((), ComponentOffset(4))
+      ]);
+      assert_eq!(rm.invoke(&mut (), &sl).count(), 0);
+      assert_eq!(rm.invoke(&mut (), &sr).collect::<Vec<_>>(), vec![
+        RightAnchoredMatchResult::CompleteMatch((), ComponentOffset(4))
+      ]);
+      assert_eq!(rm.invoke(&mut (), &sr2).collect::<Vec<_>>(), vec![
+        RightAnchoredMatchResult::PartialMatch((), RightLiteralContinuation {
+          rest: b"asd".as_ref()
+        })
+      ]);
+      assert_eq!(rm.invoke(&mut (), &s_wrong).count(), 0);
     }
   }
 }
