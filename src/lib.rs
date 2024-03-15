@@ -176,8 +176,11 @@ pub trait UnanchoredMatcher<'n> {
 
 pub mod literal {
   /* use aho_corasick::AhoCorasick; */
+  use core::hash::BuildHasherDefault;
+
   use indexmap::IndexSet;
   use memchr::memmem;
+  use rustc_hash::FxHasher;
 
   use super::*;
 
@@ -209,7 +212,7 @@ pub mod literal {
   }
 
   pub struct DoublyAnchoredMultipleLiterals<'n> {
-    lits: IndexSet<&'n [u8]>,
+    lits: IndexSet<&'n [u8], BuildHasherDefault<FxHasher>>,
   }
   impl<'n> DoublyAnchoredMultipleLiterals<'n> {
     pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self {
