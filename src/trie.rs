@@ -26,7 +26,7 @@ use hashbrown::HashMap;
 use rustc_hash::FxHasher;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct NodeIndex(pub usize);
+struct NodeIndex(pub usize);
 
 pub struct PrefixTrie<'n, A>
 where A: Allocator
@@ -51,13 +51,23 @@ where A: Allocator
     }
   }
 
+  pub fn new() -> Self
+  where A: Default {
+    Self::new_in(A::default())
+  }
+
   pub fn is_empty(&self) -> bool { self.end.is_none() && self.branches.is_empty() }
+
+  pub fn challenge(&self, key: K) -> Option<NodeIndex>
+  where K: Hash+Eq {
+    self.branches.get(&key).cloned()
+  }
 }
 
 impl<'n, A> PrefixTrie<'n, A>
 where A: Allocator+Clone
 {
-  pub fn traverse(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
+  pub fn traverse_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
     let mut nodes: UnsafeCell<Vec<Node<u8, &'n [u8], A>, A>> =
       UnsafeCell::new(Vec::with_capacity_in(1, alloc.clone()));
     let ret = Node::new_in(alloc.clone());
@@ -107,5 +117,10 @@ where A: Allocator+Clone
     Self {
       nodes: nodes.into_inner(),
     }
+  }
+
+  pub fn traverse(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
+  where A: Default {
+    Self::traverse_in(lits, A::default())
   }
 }
