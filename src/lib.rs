@@ -26,9 +26,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 pub mod input {
   pub trait Input {}
 
-  impl Input for &[u8] {}
+  impl Input for [u8] {}
 
-  impl Input for &str {}
+  impl Input for str {}
 }
 
 pub enum Chunking {
@@ -77,18 +77,20 @@ pub mod state {
 }
 
 pub trait DoublyAnchoredMatcher<'n> {
-  type I: input::Input;
+  type I: input::Input+?Sized;
   type S: alphabet::Symbol;
   type X: state::State;
   fn invoke<'s, 'x, 'h>(
     &'s self,
     x: &'x mut Self::X,
-    i: &'h Self::I,
+    i: &'h impl AsRef<Self::I>,
   ) -> impl Iterator<Item=Self::S>+'s+'x+'h
   where
     'x: 'n,
     'n: 'x,
-    's: 'n;
+    's: 'n,
+    'n: 'h,
+    'h: 'n;
 }
 
 pub enum LeftAnchoredMatchResult<S, C> {
@@ -97,7 +99,7 @@ pub enum LeftAnchoredMatchResult<S, C> {
 }
 
 pub trait LeftAnchoredMatcher<'n> {
-  type I: input::Input;
+  type I: input::Input+?Sized;
   type S: alphabet::Symbol;
   type X: state::State;
   type C: continuation::Continuation;
@@ -109,7 +111,9 @@ pub trait LeftAnchoredMatcher<'n> {
   where
     'x: 'n,
     'n: 'x,
-    's: 'n;
+    's: 'n,
+    'n: 'h,
+    'h: 'n;
 }
 
 pub enum RightAnchoredMatchResult<S, C> {
@@ -118,7 +122,7 @@ pub enum RightAnchoredMatchResult<S, C> {
 }
 
 pub trait RightAnchoredMatcher<'n> {
-  type I: input::Input;
+  type I: input::Input+?Sized;
   type S: alphabet::Symbol;
   type X: state::State;
   type C: continuation::Continuation;
@@ -130,7 +134,9 @@ pub trait RightAnchoredMatcher<'n> {
   where
     'x: 'n,
     'n: 'x,
-    's: 'n;
+    's: 'n,
+    'n: 'h,
+    'h: 'n;
 }
 
 pub struct IntraComponentInterval {
@@ -146,7 +152,7 @@ pub enum UnanchoredMatchResult<S, LC, RC> {
 }
 
 pub trait UnanchoredMatcher<'n> {
-  type I: input::Input;
+  type I: input::Input+?Sized;
   type S: alphabet::Symbol;
   type X: state::State;
   type LC: continuation::Continuation;
@@ -159,7 +165,9 @@ pub trait UnanchoredMatcher<'n> {
   where
     'x: 'n,
     'n: 'x,
-    's: 'n;
+    's: 'n,
+    'n: 'h,
+    'h: 'n;
 }
 
 pub mod literal {
@@ -175,20 +183,23 @@ pub mod literal {
     pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
   }
   impl<'n> DoublyAnchoredMatcher<'n> for DoublyAnchoredSingleLiteral<'n> {
-    type I = &'n [u8];
+    type I = [u8];
     type S = ();
     type X = ();
     fn invoke<'s, 'x, 'h>(
       &'s self,
       _x: &'x mut Self::X,
-      i: &'h Self::I,
+      i: &'h impl AsRef<Self::I>,
     ) -> impl Iterator<Item=Self::S>+'s+'x+'h
     where
       'x: 'n,
       'n: 'x,
       's: 'n,
+      'n: 'h,
+      'h: 'n,
     {
-      if *i == self.lit { Some(()) } else { None }.into_iter()
+      let i = i.as_ref();
+      if i == self.lit { Some(()) } else { None }.into_iter()
     }
   }
 
@@ -203,19 +214,22 @@ pub mod literal {
     }
   }
   impl<'n> DoublyAnchoredMatcher<'n> for DoublyAnchoredMultipleLiterals<'n> {
-    type I = &'n [u8];
+    type I = [u8];
     type S = usize;
     type X = ();
     fn invoke<'s, 'x, 'h>(
       &'s self,
       _x: &'x mut Self::X,
-      i: &'h Self::I,
+      i: &'h impl AsRef<Self::I>,
     ) -> impl Iterator<Item=Self::S>+'s+'x+'h
     where
       'x: 'n,
       'n: 'x,
       's: 'n,
+      'n: 'h,
+      'h: 'n,
     {
+      let i = i.as_ref();
       self.lits.get_index_of(i).into_iter()
     }
   }
@@ -232,7 +246,7 @@ pub mod literal {
     pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
   }
   impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteral<'n> {
-    type I = &'n [u8];
+    type I = [u8];
     type S = ();
     type X = ();
     type C = LeftLiteralContinuation<'n>;
@@ -245,6 +259,8 @@ pub mod literal {
       'x: 'n,
       'n: 'x,
       's: 'n,
+      'n: 'h,
+      'h: 'n,
     {
       let ret: Option<LeftAnchoredMatchResult<Self::S, Self::C>> = if i.len() >= self.lit.len() {
         if i.starts_with(self.lit) {
@@ -283,7 +299,7 @@ pub mod literal {
     pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
   }
   impl<'n> RightAnchoredMatcher<'n> for RightAnchoredSingleLiteral<'n> {
-    type I = &'n [u8];
+    type I = [u8];
     type S = ();
     type X = ();
     type C = RightLiteralContinuation<'n>;
@@ -296,6 +312,8 @@ pub mod literal {
       'x: 'n,
       'n: 'x,
       's: 'n,
+      'n: 'h,
+      'h: 'n,
     {
       if i.len() >= self.lit.len() {
         if i.ends_with(self.lit) {
@@ -385,7 +403,7 @@ pub mod literal {
   }
 
   impl<'n> UnanchoredMatcher<'n> for UnanchoredSingleLiteralRabinKarp<'n> {
-    type I = &'n [u8];
+    type I = [u8];
     type S = ();
     type X = ();
     type LC = LeftLiteralContinuation<'n>;
@@ -399,6 +417,8 @@ pub mod literal {
       'x: 'n,
       'n: 'x,
       's: 'n,
+      'n: 'h,
+      'h: 'n,
     {
       SingleLiteralRabinKarpIterator {
         finder: self.finder.as_ref(),
@@ -474,7 +494,7 @@ pub mod literal {
   }
 
   impl<'n> UnanchoredMatcher<'n> for UnanchoredSingleLiteralMemMem<'n> {
-    type I = &'n [u8];
+    type I = [u8];
     type S = ();
     type X = memmem::PrefilterState;
     type LC = LeftLiteralContinuation<'n>;
@@ -488,6 +508,8 @@ pub mod literal {
       'x: 'n,
       'n: 'x,
       's: 'n,
+      'n: 'h,
+      'h: 'n,
     {
       SingleLiteralMemMemIterator {
         finder: self.finder.as_ref(),
@@ -495,6 +517,24 @@ pub mod literal {
         haystack: i,
         pos: 0,
       }
+    }
+  }
+
+
+  #[cfg(test)]
+  mod test {
+    use super::*;
+
+    #[test]
+    fn doubly_anchored_match() {
+      let s = b"asdf";
+      let s: &[u8] = s.as_ref();
+      let m = literal::DoublyAnchoredSingleLiteral::new(s);
+      assert_eq!(m.invoke(&mut (), &s).count(), 1);
+
+      let s_wrong = b"f";
+      let s_wrong: &[u8] = s_wrong.as_ref();
+      assert_eq!(m.invoke(&mut (), &s_wrong).count(), 0);
     }
   }
 }
