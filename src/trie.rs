@@ -26,7 +26,7 @@ use hashbrown::HashMap;
 use rustc_hash::FxHasher;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct NodeIndex(pub usize);
+pub struct NodeIndex(pub usize);
 
 pub struct PrefixTrie<'n, A>
 where A: Allocator
@@ -34,7 +34,17 @@ where A: Allocator
   nodes: Vec<Node<u8, &'n [u8], A>, A>,
 }
 
-struct Node<K, Src, A>
+impl<'n, A> PrefixTrie<'n, A>
+where A: Allocator
+{
+  pub const fn get_top_node() -> NodeIndex { NodeIndex(0) }
+
+  pub fn get_node_by_index(&self, idx: NodeIndex) -> Option<&Node<u8, &'n [u8], A>> {
+    self.nodes.get(idx.0)
+  }
+}
+
+pub struct Node<K, Src, A>
 where A: Allocator
 {
   end: Option<Src>,

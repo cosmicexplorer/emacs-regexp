@@ -25,9 +25,9 @@ use rustc_hash::FxHasher;
 use xxhash_rust::xxh3::xxh3_64;
 
 use crate::{
-  continuation, state, ComponentOffset, DoublyAnchoredMatcher, IntraComponentInterval,
-  LeftAnchoredMatchResult, LeftAnchoredMatcher, RightAnchoredMatchResult, RightAnchoredMatcher,
-  UnanchoredMatchResult, UnanchoredMatcher,
+  continuation, state, trie, ComponentOffset, DoublyAnchoredMatcher, IntraComponentInterval,
+  LeftAnchoredAutomaton, LeftAnchoredMatchResult, LeftAnchoredMatcher, RightAnchoredAutomaton,
+  RightAnchoredMatchResult, RightAnchoredMatcher, UnanchoredMatchResult, UnanchoredMatcher,
 };
 
 pub struct DoublyAnchoredSingleLiteral<'n> {
@@ -161,22 +161,46 @@ where A: Allocator
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LeftLiteralContinuation<'n> {
-  pub rest: &'n [u8],
+pub struct LeftSingleLiteralContinuation {
+  pub offset: usize,
 }
-impl<'n> continuation::Continuation for LeftLiteralContinuation<'n> {}
+impl continuation::Continuation for LeftSingleLiteralContinuation {}
 
-pub struct LeftAnchoredSingleLiteral<'n> {
+#[derive(Debug, Copy, Clone)]
+pub struct LeftAnchoredSingleLiteralAutomaton<'n> {
   lit: &'n [u8],
 }
-impl<'n> LeftAnchoredSingleLiteral<'n> {
+impl<'n> LeftAnchoredSingleLiteralAutomaton<'n> {
   pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
 }
-impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteral<'n> {
+impl<'n> continuation::Resumable<LeftAnchoredSingleLiteralMatcher<'n>>
+  for LeftAnchoredSingleLiteralAutomaton<'n>
+{
+  type C = LeftSingleLiteralContinuation;
+
+  fn top(&self) -> Self::C { LeftSingleLiteralContinuation { offset: 0 } }
+
+  fn index(&self, c: Self::C) -> LeftAnchoredSingleLiteralMatcher<'n> {
+    LeftAnchoredSingleLiteralMatcher {
+      base: *self,
+      cont: c,
+    }
+  }
+}
+impl<'n> LeftAnchoredAutomaton<'n> for LeftAnchoredSingleLiteralAutomaton<'n> {
+  type O = LeftAnchoredSingleLiteralMatcher<'n>;
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct LeftAnchoredSingleLiteralMatcher<'n> {
+  base: LeftAnchoredSingleLiteralAutomaton<'n>,
+  cont: LeftSingleLiteralContinuation,
+}
+impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteralMatcher<'n> {
   type I = [u8];
   type S = ();
   type X = ();
-  type C = LeftLiteralContinuation<'n>;
+  type C = LeftSingleLiteralContinuation;
   fn invoke<'s, 'x, 'h>(
     &'s self,
     _x: &'x mut Self::X,
@@ -189,21 +213,26 @@ impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteral<'n> {
     'n: 'h,
     'h: 'n,
   {
-    if i.len() >= self.lit.len() {
-      if i.starts_with(self.lit) {
+    let Self {
+      base,
+      cont: LeftSingleLiteralContinuation { offset },
+    } = self;
+    let lit = &base.lit[*offset..];
+    if i.len() >= lit.len() {
+      if i.starts_with(lit) {
         Some(LeftAnchoredMatchResult::CompleteMatch(
           (),
-          ComponentOffset(self.lit.len().try_into().unwrap()),
+          ComponentOffset(lit.len().try_into().unwrap()),
         ))
       } else {
         None
       }
     } else {
-      if self.lit.starts_with(i) {
+      if lit.starts_with(i) {
         Some(LeftAnchoredMatchResult::PartialMatch(
           (),
-          LeftLiteralContinuation {
-            rest: &self.lit[i.len()..],
+          LeftSingleLiteralContinuation {
+            offset: offset + i.len(),
           },
         ))
       } else {
@@ -214,6 +243,11 @@ impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteral<'n> {
   }
 }
 
+/* #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)] */
+/* pub struct LeftPrefixContinuation { */
+/* pub state: trie::NodeIndex, */
+/* } */
+
 /* pub struct LeftAnchoredMultipleLiterals<'n> { */
 /* trie: PrefixTrie<'n>, */
 /* } */
@@ -222,22 +256,46 @@ impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteral<'n> {
 /* } */
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RightLiteralContinuation<'n> {
-  pub rest: &'n [u8],
+pub struct RightSingleLiteralContinuation {
+  pub offset: usize,
 }
-impl<'n> continuation::Continuation for RightLiteralContinuation<'n> {}
+impl continuation::Continuation for RightSingleLiteralContinuation {}
 
-pub struct RightAnchoredSingleLiteral<'n> {
+#[derive(Debug, Copy, Clone)]
+pub struct RightAnchoredSingleLiteralAutomaton<'n> {
   lit: &'n [u8],
 }
-impl<'n> RightAnchoredSingleLiteral<'n> {
+impl<'n> RightAnchoredSingleLiteralAutomaton<'n> {
   pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
 }
-impl<'n> RightAnchoredMatcher<'n> for RightAnchoredSingleLiteral<'n> {
+impl<'n> continuation::Resumable<RightAnchoredSingleLiteralMatcher<'n>>
+  for RightAnchoredSingleLiteralAutomaton<'n>
+{
+  type C = RightSingleLiteralContinuation;
+
+  fn top(&self) -> Self::C { RightSingleLiteralContinuation { offset: 0 } }
+
+  fn index(&self, c: Self::C) -> RightAnchoredSingleLiteralMatcher<'n> {
+    RightAnchoredSingleLiteralMatcher {
+      base: *self,
+      cont: c,
+    }
+  }
+}
+impl<'n> RightAnchoredAutomaton<'n> for RightAnchoredSingleLiteralAutomaton<'n> {
+  type O = RightAnchoredSingleLiteralMatcher<'n>;
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct RightAnchoredSingleLiteralMatcher<'n> {
+  base: RightAnchoredSingleLiteralAutomaton<'n>,
+  cont: RightSingleLiteralContinuation,
+}
+impl<'n> RightAnchoredMatcher<'n> for RightAnchoredSingleLiteralMatcher<'n> {
   type I = [u8];
   type S = ();
   type X = ();
-  type C = RightLiteralContinuation<'n>;
+  type C = RightSingleLiteralContinuation;
   fn invoke<'s, 'x, 'h>(
     &'s self,
     _x: &'x mut Self::X,
@@ -250,21 +308,26 @@ impl<'n> RightAnchoredMatcher<'n> for RightAnchoredSingleLiteral<'n> {
     'n: 'h,
     'h: 'n,
   {
-    if i.len() >= self.lit.len() {
-      if i.ends_with(self.lit) {
+    let Self {
+      base,
+      cont: RightSingleLiteralContinuation { offset },
+    } = self;
+    let lit = &base.lit[..(base.lit.len() - offset)];
+    if i.len() >= lit.len() {
+      if i.ends_with(lit) {
         Some(RightAnchoredMatchResult::CompleteMatch(
           (),
-          ComponentOffset(self.lit.len().try_into().unwrap()),
+          ComponentOffset(lit.len().try_into().unwrap()),
         ))
       } else {
         None
       }
     } else {
-      if self.lit.ends_with(i) {
+      if lit.ends_with(i) {
         Some(RightAnchoredMatchResult::PartialMatch(
           (),
-          RightLiteralContinuation {
-            rest: &self.lit[..(self.lit.len() - i.len())],
+          RightSingleLiteralContinuation {
+            offset: offset + i.len(),
           },
         ))
       } else {
@@ -336,133 +399,138 @@ impl<'h, 'n> Iterator for SingleLiteralRabinKarpInnerMatchIterator<'h, 'n> {
   }
 }
 
-impl<'n> UnanchoredMatcher<'n> for UnanchoredSingleLiteralRabinKarp<'n> {
-  type I = [u8];
-  type S = ();
-  type X = ();
-  type LC = LeftLiteralContinuation<'n>;
-  type RC = RightLiteralContinuation<'n>;
-  fn invoke<'s, 'x, 'h>(
-    &'s self,
-    _x: &'x mut Self::X,
-    i: &'h Self::I,
-  ) -> impl Iterator<Item=UnanchoredMatchResult<Self::S, Self::LC, Self::RC>>+'s+'x+'h
-  where
-    'x: 'n,
-    'n: 'x,
-    's: 'n,
-    'n: 'h,
-    'h: 'n,
-  {
-    let inner = SingleLiteralRabinKarpInnerMatchIterator {
-      finder: self.finder.as_ref(),
-      haystack: i,
-      pos: 0,
-    }
-    .map(|int| UnanchoredMatchResult::CompleteMatch((), int));
-    /* let left = */
-    inner
-  }
-}
+/* impl<'n> UnanchoredMatcher<'n> for UnanchoredSingleLiteralRabinKarp<'n> { */
+/* type I = [u8]; */
+/* type S = (); */
+/* type X = (); */
+/* type LC = LeftSingleLiteralContinuation<'n>; */
+/* type RC = RightSingleLiteralContinuation<'n>; */
+/* fn invoke<'s, 'x, 'h>( */
+/* &'s self, */
+/* _x: &'x mut Self::X, */
+/* i: &'h Self::I, */
+/* ) -> impl Iterator<Item=UnanchoredMatchResult<Self::S, Self::LC,
+ * Self::RC>>+'s+'x+'h */
+/* where */
+/* 'x: 'n, */
+/* 'n: 'x, */
+/* 's: 'n, */
+/* 'n: 'h, */
+/* 'h: 'n, */
+/* { */
+/* let inner = SingleLiteralRabinKarpInnerMatchIterator { */
+/* finder: self.finder.as_ref(), */
+/* haystack: i, */
+/* pos: 0, */
+/* } */
+/* .map(|int| UnanchoredMatchResult::CompleteMatch((), int)); */
+/* /\* let left = *\/ */
+/* inner */
+/* } */
+/* } */
 
-/* TODO: backwards? */
-pub struct UnanchoredSingleLiteralMemMem<'n> {
-  finder: memmem::Finder<'n>,
-}
-impl<'n> UnanchoredSingleLiteralMemMem<'n> {
-  pub fn new(lit: &'n [u8]) -> Self {
-    Self {
-      finder: memmem::Finder::new(lit),
-    }
-  }
-}
+/* /\* TODO: backwards? *\/ */
+/* pub struct UnanchoredSingleLiteralMemMem<'n> { */
+/* finder: memmem::Finder<'n>, */
+/* } */
+/* impl<'n> UnanchoredSingleLiteralMemMem<'n> { */
+/* pub fn new(lit: &'n [u8]) -> Self { */
+/* Self { */
+/* finder: memmem::Finder::new(lit), */
+/* } */
+/* } */
+/* } */
 
-impl state::State for memmem::PrefilterState {}
+/* impl state::State for memmem::PrefilterState {} */
 
-struct SingleLiteralMemMemInnerMatchIterator<'x, 'h, 'n> {
-  finder: memmem::Finder<'n>,
-  prestate: &'x mut memmem::PrefilterState,
-  haystack: &'h [u8],
-  pos: usize,
-}
-impl<'x, 'h, 'n> Iterator for SingleLiteralMemMemInnerMatchIterator<'x, 'h, 'n> {
-  type Item = IntraComponentInterval;
+/* struct SingleLiteralMemMemInnerMatchIterator<'x, 'h, 'n> { */
+/* finder: memmem::Finder<'n>, */
+/* prestate: &'x mut memmem::PrefilterState, */
+/* haystack: &'h [u8], */
+/* pos: usize, */
+/* } */
+/* impl<'x, 'h, 'n> Iterator for SingleLiteralMemMemInnerMatchIterator<'x,
+ * 'h, 'n> { */
+/* type Item = IntraComponentInterval; */
 
-  fn next(&mut self) -> Option<Self::Item> {
-    let haystack = self.haystack.get(self.pos..)?;
-    let idx = self.finder.find_state(self.prestate, haystack)?;
-    /* Iterate to the beginning of the match. */
-    let pos = self.pos + idx;
-    /* NB: Now go exactly one past, so we can find overlapping matches! */
-    self.pos = pos + 1;
+/* fn next(&mut self) -> Option<Self::Item> { */
+/* let haystack = self.haystack.get(self.pos..)?; */
+/* let idx = self.finder.find_state(self.prestate, haystack)?; */
+/* /\* Iterate to the beginning of the match. *\/ */
+/* let pos = self.pos + idx; */
+/* /\* NB: Now go exactly one past, so we can find overlapping matches! *\/ */
+/* self.pos = pos + 1; */
 
-    let int = IntraComponentInterval {
-      left: ComponentOffset(pos.try_into().unwrap()),
-      right: ComponentOffset((pos + self.finder.needle().len()).try_into().unwrap()),
-    };
-    Some(int)
-  }
+/* let int = IntraComponentInterval { */
+/* left: ComponentOffset(pos.try_into().unwrap()), */
+/* right: ComponentOffset((pos +
+ * self.finder.needle().len()).try_into().unwrap()), */
+/* }; */
+/* Some(int) */
+/* } */
 
-  fn size_hint(&self) -> (usize, Option<usize>) {
-    let remaining_haystack_len = match self.haystack.len().checked_sub(self.pos) {
-      None => return (0, Some(0)),
-      Some(haystack_len) => haystack_len,
-    };
-    let needle_len = self.finder.needle().len();
-    if needle_len == 0 {
-      // Empty needles always succeed and match at every point
-      // (including the very end)
-      return (
-        remaining_haystack_len.saturating_add(1),
-        remaining_haystack_len.checked_add(1),
-      );
-    }
-    /* Can match once if needle_len == haystack_len, then once further for
-    each additional byte.
-    This is many more than the quotient which is used in FindIter, since it
-    does not check for
-    overlapping matches. */
-    (
-      0,
-      Some(remaining_haystack_len.saturating_sub(needle_len - 1)),
-    )
-  }
-}
+/* fn size_hint(&self) -> (usize, Option<usize>) { */
+/* let remaining_haystack_len = match
+ * self.haystack.len().checked_sub(self.pos) { */
+/* None => return (0, Some(0)), */
+/* Some(haystack_len) => haystack_len, */
+/* }; */
+/* let needle_len = self.finder.needle().len(); */
+/* if needle_len == 0 { */
+/* // Empty needles always succeed and match at every point */
+/* // (including the very end) */
+/* return ( */
+/* remaining_haystack_len.saturating_add(1), */
+/* remaining_haystack_len.checked_add(1), */
+/* ); */
+/* } */
+/* /\* Can match once if needle_len == haystack_len, then once further for */
+/* each additional byte. */
+/* This is many more than the quotient which is used in FindIter, since it */
+/* does not check for */
+/* overlapping matches. *\/ */
+/* ( */
+/* 0, */
+/* Some(remaining_haystack_len.saturating_sub(needle_len - 1)), */
+/* ) */
+/* } */
+/* } */
 
-impl<'n> UnanchoredMatcher<'n> for UnanchoredSingleLiteralMemMem<'n> {
-  type I = [u8];
-  type S = ();
-  type X = memmem::PrefilterState;
-  type LC = LeftLiteralContinuation<'n>;
-  type RC = RightLiteralContinuation<'n>;
-  fn invoke<'s, 'x, 'h>(
-    &'s self,
-    x: &'x mut Self::X,
-    i: &'h Self::I,
-  ) -> impl Iterator<Item=UnanchoredMatchResult<Self::S, Self::LC, Self::RC>>+'s+'x+'h
-  where
-    'x: 'n,
-    'n: 'x,
-    's: 'n,
-    'n: 'h,
-    'h: 'n,
-  {
-    SingleLiteralMemMemInnerMatchIterator {
-      finder: self.finder.as_ref(),
-      prestate: x,
-      haystack: i,
-      pos: 0,
-    }
-    .map(|int| UnanchoredMatchResult::CompleteMatch((), int))
-  }
-}
-
+/* impl<'n> UnanchoredMatcher<'n> for UnanchoredSingleLiteralMemMem<'n> { */
+/* type I = [u8]; */
+/* type S = (); */
+/* type X = memmem::PrefilterState; */
+/* type LC = LeftSingleLiteralContinuation<'n>; */
+/* type RC = RightSingleLiteralContinuation<'n>; */
+/* fn invoke<'s, 'x, 'h>( */
+/* &'s self, */
+/* x: &'x mut Self::X, */
+/* i: &'h Self::I, */
+/* ) -> impl Iterator<Item=UnanchoredMatchResult<Self::S, Self::LC,
+ * Self::RC>>+'s+'x+'h */
+/* where */
+/* 'x: 'n, */
+/* 'n: 'x, */
+/* 's: 'n, */
+/* 'n: 'h, */
+/* 'h: 'n, */
+/* { */
+/* SingleLiteralMemMemInnerMatchIterator { */
+/* finder: self.finder.as_ref(), */
+/* prestate: x, */
+/* haystack: i, */
+/* pos: 0, */
+/* } */
+/* .map(|int| UnanchoredMatchResult::CompleteMatch((), int)) */
+/* } */
+/* } */
 
 #[cfg(test)]
 mod test {
   use std::alloc::System;
 
   use super::*;
+  use crate::continuation::Resumable;
 
   #[test]
   fn doubly_anchored_match() {
@@ -511,8 +579,14 @@ mod test {
     let s1 = b"asdf";
     let s1: &[u8] = s1.as_ref();
 
-    let lm = LeftAnchoredSingleLiteral::new(s1);
-    let rm = RightAnchoredSingleLiteral::new(s1);
+    let la = LeftAnchoredSingleLiteralAutomaton::new(s1);
+    let ra = RightAnchoredSingleLiteralAutomaton::new(s1);
+
+    let lt = la.top();
+    let rt = ra.top();
+
+    let lm = la.index(lt);
+    let rm = ra.index(rt);
 
     let sl = b"asdfeee";
     let sl: &[u8] = sl.as_ref();
@@ -534,12 +608,12 @@ mod test {
       LeftAnchoredMatchResult::CompleteMatch((), ComponentOffset(4))
     ]);
     assert_eq!(lm.invoke(&mut (), &sl2).collect::<Vec<_>>(), vec![
-      LeftAnchoredMatchResult::PartialMatch((), LeftLiteralContinuation {
-        rest: b"sdf".as_ref()
-      })
+      LeftAnchoredMatchResult::PartialMatch((), LeftSingleLiteralContinuation { offset: 1 })
     ]);
     assert_eq!(lm.invoke(&mut (), &sr).count(), 0);
     assert_eq!(lm.invoke(&mut (), &s_wrong).count(), 0);
+
+    /* TODO: multiple continuation! */
 
     assert_eq!(rm.invoke(&mut (), &s1).collect::<Vec<_>>(), vec![
       RightAnchoredMatchResult::CompleteMatch((), ComponentOffset(4))
@@ -549,103 +623,101 @@ mod test {
       RightAnchoredMatchResult::CompleteMatch((), ComponentOffset(4))
     ]);
     assert_eq!(rm.invoke(&mut (), &sr2).collect::<Vec<_>>(), vec![
-      RightAnchoredMatchResult::PartialMatch((), RightLiteralContinuation {
-        rest: b"asd".as_ref()
-      })
+      RightAnchoredMatchResult::PartialMatch((), RightSingleLiteralContinuation { offset: 1 })
     ]);
     assert_eq!(rm.invoke(&mut (), &s_wrong).count(), 0);
 
     /* TODO: multiple matches! */
   }
 
-  #[test]
-  fn unanchored_rabin_karp() {
-    let s1 = b"asdf";
-    let s1: &[u8] = s1.as_ref();
+  /* #[test] */
+  /* fn unanchored_rabin_karp() { */
+  /* let s1 = b"asdf"; */
+  /* let s1: &[u8] = s1.as_ref(); */
 
-    let sl = b"asdfeee";
-    let sl: &[u8] = sl.as_ref();
-    let sl2 = b"a";
-    let sl2: &[u8] = sl2.as_ref();
+  /* let sl = b"asdfeee"; */
+  /* let sl: &[u8] = sl.as_ref(); */
+  /* let sl2 = b"a"; */
+  /* let sl2: &[u8] = sl2.as_ref(); */
 
-    let sr = b"eeeasdf";
-    let sr: &[u8] = sr.as_ref();
-    let sr2 = b"f";
-    let sr2: &[u8] = sr2.as_ref();
+  /* let sr = b"eeeasdf"; */
+  /* let sr: &[u8] = sr.as_ref(); */
+  /* let sr2 = b"f"; */
+  /* let sr2: &[u8] = sr2.as_ref(); */
 
-    let s_wrong = b"g";
-    let s_wrong: &[u8] = s_wrong.as_ref();
+  /* let s_wrong = b"g"; */
+  /* let s_wrong: &[u8] = s_wrong.as_ref(); */
 
-    let m = UnanchoredSingleLiteralRabinKarp::new(s1);
+  /* let m = UnanchoredSingleLiteralRabinKarp::new(s1); */
 
-    assert_eq!(m.invoke(&mut (), &s1).collect::<Vec<_>>(), vec![
-      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
-        left: ComponentOffset(0),
-        right: ComponentOffset(4),
-      })
-    ]);
-    assert_eq!(m.invoke(&mut (), &sl).collect::<Vec<_>>(), vec![
-      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
-        left: ComponentOffset(0),
-        right: ComponentOffset(4),
-      })
-    ]);
-    /* FIXME: partial matches for unanchored! */
-    assert_eq!(m.invoke(&mut (), &sl2).count(), 0);
-    assert_eq!(m.invoke(&mut (), &sr).collect::<Vec<_>>(), vec![
-      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
-        left: ComponentOffset(3),
-        right: ComponentOffset(7),
-      })
-    ]);
-    /* FIXME: partial matches for unanchored! */
-    assert_eq!(m.invoke(&mut (), &sr2).count(), 0);
-    assert_eq!(m.invoke(&mut (), &s_wrong).count(), 0);
-  }
+  /* assert_eq!(m.invoke(&mut (), &s1).collect::<Vec<_>>(), vec![ */
+  /* UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval { */
+  /* left: ComponentOffset(0), */
+  /* right: ComponentOffset(4), */
+  /* }) */
+  /* ]); */
+  /* assert_eq!(m.invoke(&mut (), &sl).collect::<Vec<_>>(), vec![ */
+  /* UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval { */
+  /* left: ComponentOffset(0), */
+  /* right: ComponentOffset(4), */
+  /* }) */
+  /* ]); */
+  /* /\* FIXME: partial matches for unanchored! *\/ */
+  /* assert_eq!(m.invoke(&mut (), &sl2).count(), 0); */
+  /* assert_eq!(m.invoke(&mut (), &sr).collect::<Vec<_>>(), vec![ */
+  /* UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval { */
+  /* left: ComponentOffset(3), */
+  /* right: ComponentOffset(7), */
+  /* }) */
+  /* ]); */
+  /* /\* FIXME: partial matches for unanchored! *\/ */
+  /* assert_eq!(m.invoke(&mut (), &sr2).count(), 0); */
+  /* assert_eq!(m.invoke(&mut (), &s_wrong).count(), 0); */
+  /* } */
 
-  #[test]
-  fn unanchored_memmem() {
-    let s1 = b"asdf";
-    let s1: &[u8] = s1.as_ref();
+  /* #[test] */
+  /* fn unanchored_memmem() { */
+  /* let s1 = b"asdf"; */
+  /* let s1: &[u8] = s1.as_ref(); */
 
-    let sl = b"asdfeee";
-    let sl: &[u8] = sl.as_ref();
-    let sl2 = b"a";
-    let sl2: &[u8] = sl2.as_ref();
+  /* let sl = b"asdfeee"; */
+  /* let sl: &[u8] = sl.as_ref(); */
+  /* let sl2 = b"a"; */
+  /* let sl2: &[u8] = sl2.as_ref(); */
 
-    let sr = b"eeeasdf";
-    let sr: &[u8] = sr.as_ref();
-    let sr2 = b"f";
-    let sr2: &[u8] = sr2.as_ref();
+  /* let sr = b"eeeasdf"; */
+  /* let sr: &[u8] = sr.as_ref(); */
+  /* let sr2 = b"f"; */
+  /* let sr2: &[u8] = sr2.as_ref(); */
 
-    let s_wrong = b"g";
-    let s_wrong: &[u8] = s_wrong.as_ref();
+  /* let s_wrong = b"g"; */
+  /* let s_wrong: &[u8] = s_wrong.as_ref(); */
 
-    let m = UnanchoredSingleLiteralMemMem::new(s1);
-    let mut prestate = memmem::PrefilterState::new();
+  /* let m = UnanchoredSingleLiteralMemMem::new(s1); */
+  /* let mut prestate = memmem::PrefilterState::new(); */
 
-    assert_eq!(m.invoke(&mut prestate, &s1).collect::<Vec<_>>(), vec![
-      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
-        left: ComponentOffset(0),
-        right: ComponentOffset(4),
-      })
-    ]);
-    assert_eq!(m.invoke(&mut prestate, &sl).collect::<Vec<_>>(), vec![
-      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
-        left: ComponentOffset(0),
-        right: ComponentOffset(4),
-      })
-    ]);
-    /* FIXME: partial matches for unanchored! */
-    assert_eq!(m.invoke(&mut prestate, &sl2).count(), 0);
-    assert_eq!(m.invoke(&mut prestate, &sr).collect::<Vec<_>>(), vec![
-      UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval {
-        left: ComponentOffset(3),
-        right: ComponentOffset(7),
-      })
-    ]);
-    /* FIXME: partial matches for unanchored! */
-    assert_eq!(m.invoke(&mut prestate, &sr2).count(), 0);
-    assert_eq!(m.invoke(&mut prestate, &s_wrong).count(), 0);
-  }
+  /* assert_eq!(m.invoke(&mut prestate, &s1).collect::<Vec<_>>(), vec![ */
+  /* UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval { */
+  /* left: ComponentOffset(0), */
+  /* right: ComponentOffset(4), */
+  /* }) */
+  /* ]); */
+  /* assert_eq!(m.invoke(&mut prestate, &sl).collect::<Vec<_>>(), vec![ */
+  /* UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval { */
+  /* left: ComponentOffset(0), */
+  /* right: ComponentOffset(4), */
+  /* }) */
+  /* ]); */
+  /* /\* FIXME: partial matches for unanchored! *\/ */
+  /* assert_eq!(m.invoke(&mut prestate, &sl2).count(), 0); */
+  /* assert_eq!(m.invoke(&mut prestate, &sr).collect::<Vec<_>>(), vec![ */
+  /* UnanchoredMatchResult::CompleteMatch((), IntraComponentInterval { */
+  /* left: ComponentOffset(3), */
+  /* right: ComponentOffset(7), */
+  /* }) */
+  /* ]); */
+  /* /\* FIXME: partial matches for unanchored! *\/ */
+  /* assert_eq!(m.invoke(&mut prestate, &sr2).count(), 0); */
+  /* assert_eq!(m.invoke(&mut prestate, &s_wrong).count(), 0); */
+  /* } */
 }

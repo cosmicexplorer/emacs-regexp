@@ -53,6 +53,14 @@ pub struct GlobalOffset(pub GlobalLen);
 
 pub mod continuation {
   pub trait Continuation {}
+
+  pub trait Resumable<O> {
+    type C: Continuation;
+
+    fn top(&self) -> Self::C;
+
+    fn index(&self, c: Self::C) -> O;
+  }
 }
 
 pub mod alphabet {
@@ -90,6 +98,10 @@ pub enum LeftAnchoredMatchResult<S, C> {
   PartialMatch(S, C),
 }
 
+pub trait LeftAnchoredAutomaton<'n>: continuation::Resumable<Self::O> {
+  type O: LeftAnchoredMatcher<'n, C=<Self as continuation::Resumable<Self::O>>::C>;
+}
+
 pub trait LeftAnchoredMatcher<'n> {
   type I: input::Input+?Sized;
   type S: alphabet::Symbol;
@@ -112,6 +124,11 @@ pub trait LeftAnchoredMatcher<'n> {
 pub enum RightAnchoredMatchResult<S, C> {
   CompleteMatch(S, ComponentOffset),
   PartialMatch(S, C),
+}
+
+
+pub trait RightAnchoredAutomaton<'n>: continuation::Resumable<Self::O> {
+  type O: RightAnchoredMatcher<'n, C=<Self as continuation::Resumable<Self::O>>::C>;
 }
 
 pub trait RightAnchoredMatcher<'n> {
