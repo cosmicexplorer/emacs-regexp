@@ -45,6 +45,15 @@ type ComponentLen = u32;
 #[repr(transparent)]
 pub struct ComponentOffset(pub ComponentLen);
 
+impl ComponentOffset {
+  pub fn as_size(self) -> usize { self.0 as usize }
+
+  pub fn try_from_size(x: usize) -> Option<Self> {
+    let x: Result<ComponentLen, _> = x.try_into();
+    Some(Self(x.ok()?))
+  }
+}
+
 type GlobalLen = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -54,12 +63,13 @@ pub struct GlobalOffset(pub GlobalLen);
 pub mod continuation {
   pub trait Continuation {}
 
-  pub trait Resumable<O> {
+  pub trait Resumable<'t, O> {
     type C: Continuation;
 
     fn top(&self) -> Self::C;
 
-    fn index(&self, c: Self::C) -> O;
+    fn index<'s>(&'s self, c: Self::C) -> impl Into<O>+'s
+    where 's: 't;
   }
 }
 
@@ -95,11 +105,11 @@ pub trait DoublyAnchoredMatcher<'n> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LeftAnchoredMatchResult<S, C> {
   CompleteMatch(S, ComponentOffset),
-  PartialMatch(S, C),
+  PartialMatch(C),
 }
 
-pub trait LeftAnchoredAutomaton<'n>: continuation::Resumable<Self::O> {
-  type O: LeftAnchoredMatcher<'n, C=<Self as continuation::Resumable<Self::O>>::C>;
+pub trait LeftAnchoredAutomaton<'n>: continuation::Resumable<'n, Self::O> {
+  type O: LeftAnchoredMatcher<'n, C=<Self as continuation::Resumable<'n, Self::O>>::C>+'n;
 }
 
 pub trait LeftAnchoredMatcher<'n> {
@@ -127,8 +137,8 @@ pub enum RightAnchoredMatchResult<S, C> {
 }
 
 
-pub trait RightAnchoredAutomaton<'n>: continuation::Resumable<Self::O> {
-  type O: RightAnchoredMatcher<'n, C=<Self as continuation::Resumable<Self::O>>::C>;
+pub trait RightAnchoredAutomaton<'n>: continuation::Resumable<'n, Self::O> {
+  type O: RightAnchoredMatcher<'n, C=<Self as continuation::Resumable<'n, Self::O>>::C>+'n;
 }
 
 pub trait RightAnchoredMatcher<'n> {

@@ -28,6 +28,7 @@ use rustc_hash::FxHasher;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeIndex(pub usize);
 
+#[derive(Debug, Clone)]
 pub struct PrefixTrie<'n, A>
 where A: Allocator
 {
@@ -44,6 +45,7 @@ where A: Allocator
   }
 }
 
+#[derive(Debug, Clone)]
 pub struct Node<K, Src, A>
 where A: Allocator
 {
@@ -72,6 +74,9 @@ where A: Allocator
   where K: Hash+Eq {
     self.branches.get(&key).cloned()
   }
+
+  #[inline(always)]
+  pub fn end(&self) -> Option<&Src> { self.end.as_ref() }
 }
 
 impl<'n, A> PrefixTrie<'n, A>

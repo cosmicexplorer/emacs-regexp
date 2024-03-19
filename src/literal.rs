@@ -17,7 +17,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 /* use aho_corasick::AhoCorasick; */
-use core::{alloc::Allocator, hash::BuildHasherDefault};
+use core::{alloc::Allocator, hash::BuildHasherDefault, mem};
 
 use hashbrown::HashTable;
 use memchr::memmem;
@@ -25,7 +25,8 @@ use rustc_hash::FxHasher;
 use xxhash_rust::xxh3::xxh3_64;
 
 use crate::{
-  continuation, state, trie, ComponentOffset, DoublyAnchoredMatcher, IntraComponentInterval,
+  continuation::{self, Resumable as _},
+  state, trie, ComponentOffset, DoublyAnchoredMatcher, IntraComponentInterval,
   LeftAnchoredAutomaton, LeftAnchoredMatchResult, LeftAnchoredMatcher, RightAnchoredAutomaton,
   RightAnchoredMatchResult, RightAnchoredMatcher, UnanchoredMatchResult, UnanchoredMatcher,
 };
@@ -173,14 +174,15 @@ pub struct LeftAnchoredSingleLiteralAutomaton<'n> {
 impl<'n> LeftAnchoredSingleLiteralAutomaton<'n> {
   pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
 }
-impl<'n> continuation::Resumable<LeftAnchoredSingleLiteralMatcher<'n>>
+impl<'n> continuation::Resumable<'n, LeftAnchoredSingleLiteralMatcher<'n>>
   for LeftAnchoredSingleLiteralAutomaton<'n>
 {
   type C = LeftSingleLiteralContinuation;
 
   fn top(&self) -> Self::C { LeftSingleLiteralContinuation { offset: 0 } }
 
-  fn index(&self, c: Self::C) -> LeftAnchoredSingleLiteralMatcher<'n> {
+  fn index<'s>(&'s self, c: Self::C) -> impl Into<LeftAnchoredSingleLiteralMatcher<'n>>+'s
+  where 's: 'n {
     LeftAnchoredSingleLiteralMatcher {
       base: *self,
       cont: c,
@@ -230,7 +232,6 @@ impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteralMatcher<'n> {
     } else {
       if lit.starts_with(i) {
         Some(LeftAnchoredMatchResult::PartialMatch(
-          (),
           LeftSingleLiteralContinuation {
             offset: offset + i.len(),
           },
@@ -243,17 +244,173 @@ impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteralMatcher<'n> {
   }
 }
 
-/* #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)] */
-/* pub struct LeftPrefixContinuation { */
-/* pub state: trie::NodeIndex, */
-/* } */
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LeftPrefixContinuation {
+  pub state: trie::NodeIndex,
+}
+impl continuation::Continuation for LeftPrefixContinuation {}
 
-/* pub struct LeftAnchoredMultipleLiterals<'n> { */
-/* trie: PrefixTrie<'n>, */
-/* } */
-/* impl<'n> LeftAnchoredMultipleLiterals<'n> { */
-/* pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self {} */
-/* } */
+
+#[derive(Debug, Clone)]
+pub struct LeftAnchoredMultipleLiteralsAutomaton<'n, A>
+where A: Allocator
+{
+  trie: trie::PrefixTrie<'n, A>,
+}
+impl<'n, A> LeftAnchoredMultipleLiteralsAutomaton<'n, A>
+where A: Allocator+Clone
+{
+  pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
+    Self {
+      trie: trie::PrefixTrie::traverse_in(lits, alloc),
+    }
+  }
+
+  pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
+  where A: Default {
+    Self::new_in(lits, A::default())
+  }
+}
+impl<'t, 'n, A> continuation::Resumable<'t, LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>>
+  for LeftAnchoredMultipleLiteralsAutomaton<'n, A>
+where
+  A: Allocator,
+  't: 'n,
+  'n: 't,
+{
+  type C = LeftPrefixContinuation;
+
+  fn top(&self) -> Self::C {
+    LeftPrefixContinuation {
+      state: trie::PrefixTrie::<A>::get_top_node(),
+    }
+  }
+
+  fn index<'s>(
+    &'s self,
+    c: Self::C,
+  ) -> impl Into<LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>>+'s
+  where
+    's: 't,
+  {
+    let LeftPrefixContinuation { state } = c;
+    let node = self.trie.get_node_by_index(state).unwrap();
+    LeftAnchoredMultipleLiteralsMatcher {
+      automaton: self,
+      node,
+    }
+  }
+}
+impl<'t, 'n, A> LeftAnchoredAutomaton<'t> for LeftAnchoredMultipleLiteralsAutomaton<'n, A>
+where
+  A: Allocator+'t,
+  't: 'n,
+  'n: 't,
+{
+  type O = LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>;
+}
+
+struct LeftPrefixIt<'t, 'n, 'h, A>
+where A: Allocator
+{
+  automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
+  input: &'h [u8],
+  /* TODO: make these two an enum! */
+  start_node: Option<&'t trie::Node<u8, &'n [u8], A>>,
+  end_continuation: Option<LeftPrefixContinuation>,
+}
+impl<'t, 'n, 'h, A> LeftPrefixIt<'t, 'n, 'h, A>
+where A: Allocator
+{
+  pub fn from_automaton_and_input_and_start_node(
+    automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
+    input: &'h [u8],
+    start_node: &'t trie::Node<u8, &'n [u8], A>,
+  ) -> Self {
+    Self {
+      automaton,
+      input,
+      start_node: Some(start_node),
+      end_continuation: None,
+    }
+  }
+}
+impl<'t, 'n, 'h, A> Iterator for LeftPrefixIt<'t, 'n, 'h, A>
+where
+  A: Allocator,
+  't: 'n,
+{
+  type Item = LeftAnchoredMatchResult<&'n [u8], LeftPrefixContinuation>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    if let Some(end_continuation) = self.end_continuation.take() {
+      return Some(LeftAnchoredMatchResult::PartialMatch(end_continuation));
+    }
+
+    let mut cur_trie_node = self.start_node?;
+
+    assert!(!self.input.is_empty());
+
+    for token in self.input.iter() {
+      match cur_trie_node.challenge(*token) {
+        /* Prefix match failed! */
+        None => return None,
+        /* Succeeded! Let's continue. */
+        Some(next_index) => {
+          let next_index = LeftPrefixContinuation { state: next_index };
+          self.end_continuation = Some(next_index);
+          let LeftAnchoredMultipleLiteralsMatcher {
+            node: next_node, ..
+          } = self.automaton.index(next_index).into();
+          cur_trie_node = next_node;
+        },
+      }
+    }
+
+    return Some(if let Some(id) = cur_trie_node.end() {
+      LeftAnchoredMatchResult::CompleteMatch(
+        id,
+        ComponentOffset::try_from_size(self.input.len())
+          .expect("input component should fit within u32"),
+      )
+    } else {
+      LeftAnchoredMatchResult::PartialMatch(self.end_continuation.take().expect(
+        "self.end_continuation should have been set above since input was asserted nonempty",
+      ))
+    });
+  }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>
+where A: Allocator
+{
+  automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
+  node: &'t trie::Node<u8, &'n [u8], A>,
+}
+impl<'t, 'n, A> LeftAnchoredMatcher<'n> for LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>
+where A: Allocator
+{
+  type I = [u8];
+  type S = &'n [u8];
+  type X = ();
+  type C = LeftPrefixContinuation;
+  fn invoke<'s, 'x, 'h>(
+    &'s self,
+    _x: &'x mut Self::X,
+    i: &'h Self::I,
+  ) -> impl Iterator<Item=LeftAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
+  where
+    'x: 'n,
+    'n: 'x,
+    's: 'n,
+    'n: 'h,
+    'h: 'n,
+  {
+    assert!(!i.is_empty());
+    LeftPrefixIt::from_automaton_and_input_and_start_node(self.automaton, i, self.node)
+  }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RightSingleLiteralContinuation {
@@ -268,14 +425,15 @@ pub struct RightAnchoredSingleLiteralAutomaton<'n> {
 impl<'n> RightAnchoredSingleLiteralAutomaton<'n> {
   pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
 }
-impl<'n> continuation::Resumable<RightAnchoredSingleLiteralMatcher<'n>>
+impl<'n> continuation::Resumable<'n, RightAnchoredSingleLiteralMatcher<'n>>
   for RightAnchoredSingleLiteralAutomaton<'n>
 {
   type C = RightSingleLiteralContinuation;
 
   fn top(&self) -> Self::C { RightSingleLiteralContinuation { offset: 0 } }
 
-  fn index(&self, c: Self::C) -> RightAnchoredSingleLiteralMatcher<'n> {
+  fn index<'s>(&'s self, c: Self::C) -> impl Into<RightAnchoredSingleLiteralMatcher<'n>>+'s
+  where 's: 'n {
     RightAnchoredSingleLiteralMatcher {
       base: *self,
       cont: c,
@@ -583,10 +741,12 @@ mod test {
     let ra = RightAnchoredSingleLiteralAutomaton::new(s1);
 
     let lt = la.top();
+    assert_eq!(lt, LeftSingleLiteralContinuation { offset: 0 });
     let rt = ra.top();
+    assert_eq!(rt, RightSingleLiteralContinuation { offset: 0 });
 
-    let lm = la.index(lt);
-    let rm = ra.index(rt);
+    let lm = la.index(lt).into();
+    let rm = ra.index(rt).into();
 
     let sl = b"asdfeee";
     let sl: &[u8] = sl.as_ref();
@@ -608,12 +768,14 @@ mod test {
       LeftAnchoredMatchResult::CompleteMatch((), ComponentOffset(4))
     ]);
     assert_eq!(lm.invoke(&mut (), &sl2).collect::<Vec<_>>(), vec![
-      LeftAnchoredMatchResult::PartialMatch((), LeftSingleLiteralContinuation { offset: 1 })
+      LeftAnchoredMatchResult::PartialMatch(LeftSingleLiteralContinuation { offset: 1 })
+    ]);
+    let lm2 = la.index(LeftSingleLiteralContinuation { offset: 1 }).into();
+    assert_eq!(lm2.invoke(&mut (), b"sdfee").collect::<Vec<_>>(), vec![
+      LeftAnchoredMatchResult::CompleteMatch((), ComponentOffset(3))
     ]);
     assert_eq!(lm.invoke(&mut (), &sr).count(), 0);
     assert_eq!(lm.invoke(&mut (), &s_wrong).count(), 0);
-
-    /* TODO: multiple continuation! */
 
     assert_eq!(rm.invoke(&mut (), &s1).collect::<Vec<_>>(), vec![
       RightAnchoredMatchResult::CompleteMatch((), ComponentOffset(4))
@@ -624,6 +786,12 @@ mod test {
     ]);
     assert_eq!(rm.invoke(&mut (), &sr2).collect::<Vec<_>>(), vec![
       RightAnchoredMatchResult::PartialMatch((), RightSingleLiteralContinuation { offset: 1 })
+    ]);
+    let rm2 = ra
+      .index(RightSingleLiteralContinuation { offset: 1 })
+      .into();
+    assert_eq!(rm2.invoke(&mut (), b"eeasd").collect::<Vec<_>>(), vec![
+      RightAnchoredMatchResult::CompleteMatch((), ComponentOffset(3))
     ]);
     assert_eq!(rm.invoke(&mut (), &s_wrong).count(), 0);
 
