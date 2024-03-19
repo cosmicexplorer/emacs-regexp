@@ -83,10 +83,9 @@ impl<'n, A> PrefixTrie<'n, A>
 where A: Allocator+Clone
 {
   pub fn traverse_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
-    let mut nodes: UnsafeCell<Vec<Node<u8, &'n [u8], A>, A>> =
-      UnsafeCell::new(Vec::with_capacity_in(1, alloc.clone()));
+    let mut nodes: Vec<Node<u8, &'n [u8], A>, A> = Vec::with_capacity_in(1, alloc.clone());
     let ret = Node::new_in(alloc.clone());
-    nodes.get_mut().push(ret);
+    nodes.push(ret);
 
     let mut lits_vec: Vec<(&'n [u8], &'n [u8]), A> = Vec::new_in(alloc.clone());
     for l in lits.into_iter() {
@@ -95,11 +94,11 @@ where A: Allocator+Clone
 
     let mut todo: Vec<(NodeIndex, Vec<(&'n [u8], &'n [u8]), A>), A> =
       Vec::with_capacity_in(1, alloc.clone());
-    todo.push((NodeIndex(unsafe { &*nodes.get() }.len() - 1), lits_vec));
+    todo.push((NodeIndex(nodes.len() - 1), lits_vec));
 
     while let Some((NodeIndex(cur_node), lits)) = todo.pop() {
-      let cur_node = unsafe { &mut *nodes.get() }.get_mut(cur_node).unwrap();
-      assert!(cur_node.is_empty());
+      debug_assert!(nodes.get(cur_node).unwrap().is_empty());
+      let mut end: Option<&'n [u8]> = None;
 
       let mut branches: HashMap<u8, Vec<(&'n [u8], &'n [u8]), A>, BuildHasherDefault<FxHasher>, A> =
         HashMap::with_hasher_in(BuildHasherDefault::<FxHasher>::default(), alloc.clone());
@@ -107,7 +106,7 @@ where A: Allocator+Clone
       for (src, rest) in lits.into_iter() {
         match rest.split_first() {
           None => {
-            cur_node.end = Some(src);
+            end = Some(src);
           },
           Some((first, rest)) => {
             branches
@@ -120,18 +119,20 @@ where A: Allocator+Clone
 
       for (key, rest) in branches.into_iter() {
         let subnode = Node::new_in(alloc.clone());
-        unsafe { &mut *nodes.get() }.push(subnode);
-        let sub_node = NodeIndex(unsafe { &*nodes.get() }.len() - 1);
+        nodes.push(subnode);
+        let sub_node = NodeIndex(nodes.len() - 1);
 
         todo.push((sub_node, rest));
 
-        cur_node.branches.insert_unique_unchecked(key, sub_node);
+        nodes
+          .get_mut(cur_node)
+          .unwrap()
+          .branches
+          .insert_unique_unchecked(key, sub_node);
       }
     }
 
-    Self {
-      nodes: nodes.into_inner(),
-    }
+    Self { nodes }
   }
 
   pub fn traverse(lits: impl IntoIterator<Item=&'n [u8]>) -> Self

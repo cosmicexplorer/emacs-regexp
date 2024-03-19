@@ -133,7 +133,7 @@ pub trait LeftAnchoredMatcher<'n> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RightAnchoredMatchResult<S, C> {
   CompleteMatch(S, ComponentOffset),
-  PartialMatch(S, C),
+  PartialMatch(C),
 }
 
 

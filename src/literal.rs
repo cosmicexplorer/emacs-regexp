@@ -483,7 +483,6 @@ impl<'n> RightAnchoredMatcher<'n> for RightAnchoredSingleLiteralMatcher<'n> {
     } else {
       if lit.ends_with(i) {
         Some(RightAnchoredMatchResult::PartialMatch(
-          (),
           RightSingleLiteralContinuation {
             offset: offset + i.len(),
           },
@@ -785,7 +784,7 @@ mod test {
       RightAnchoredMatchResult::CompleteMatch((), ComponentOffset(4))
     ]);
     assert_eq!(rm.invoke(&mut (), &sr2).collect::<Vec<_>>(), vec![
-      RightAnchoredMatchResult::PartialMatch((), RightSingleLiteralContinuation { offset: 1 })
+      RightAnchoredMatchResult::PartialMatch(RightSingleLiteralContinuation { offset: 1 })
     ]);
     let rm2 = ra
       .index(RightSingleLiteralContinuation { offset: 1 })
@@ -796,6 +795,61 @@ mod test {
     assert_eq!(rm.invoke(&mut (), &s_wrong).count(), 0);
 
     /* TODO: multiple matches! */
+  }
+
+  #[test]
+  fn lr_match_multiple() {
+    let s1 = b"asdf";
+    let s1: &[u8] = s1.as_ref();
+    let s2 = b"ok3";
+    let s2: &[u8] = s2.as_ref();
+
+    let la = LeftAnchoredMultipleLiteralsAutomaton::<System>::new([s1, s2]);
+    let lt = la.top();
+    assert_eq!(lt, LeftPrefixContinuation {
+      state: trie::NodeIndex(0)
+    });
+    let lm = la.index(lt).into();
+
+    let t1 = b"asdfee";
+    let t1: &[u8] = t1.as_ref();
+
+    let t2 = b"ok3";
+    let t2: &[u8] = t2.as_ref();
+
+    let t3 = b"asd";
+    let t3: &[u8] = t3.as_ref();
+
+    let t_wrong = b"g";
+    let t_wrong: &[u8] = t_wrong.as_ref();
+
+    let mut x = ();
+    let matches: Vec<_> = lm.invoke(&mut x, &t1).collect();
+    dbg!(&matches);
+    assert_eq!(matches.len(), 1);
+    match matches[0] {
+      LeftAnchoredMatchResult::CompleteMatch(t, o) => {
+        assert_eq!(s1.as_ptr(), t.as_ptr());
+        assert_eq!(o, ComponentOffset(4));
+      },
+      _ => unreachable!(),
+    }
+
+    let matches: Vec<_> = lm.invoke(&mut x, &t2).collect();
+    assert_eq!(matches.len(), 1);
+    match matches[0] {
+      LeftAnchoredMatchResult::CompleteMatch(t, o) => {
+        assert_eq!(s2.as_ptr(), t.as_ptr());
+        assert_eq!(o, ComponentOffset(3));
+      },
+      _ => unreachable!(),
+    }
+
+    assert_eq!(lm.invoke(&mut x, &t3).collect::<Vec<_>>(), vec![
+      LeftAnchoredMatchResult::PartialMatch(LeftPrefixContinuation {
+        state: trie::NodeIndex(3)
+      })
+    ]);
   }
 
   /* #[test] */
