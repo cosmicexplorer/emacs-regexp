@@ -31,284 +31,138 @@ use crate::{
   RightAnchoredMatchResult, RightAnchoredMatcher, UnanchoredMatchResult, UnanchoredMatcher,
 };
 
-pub struct DoublyAnchoredSingleLiteral<'n> {
-  lit: &'n [u8],
-}
-impl<'n> DoublyAnchoredSingleLiteral<'n> {
-  pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
-}
-impl<'n> DoublyAnchoredMatcher<'n> for DoublyAnchoredSingleLiteral<'n> {
-  type I = [u8];
-  type S = ();
-  type X = ();
-  fn invoke<'s, 'x, 'h>(
-    &'s self,
-    _x: &'x mut Self::X,
-    i: &'h Self::I,
-  ) -> impl Iterator<Item=Self::S>+'s+'x+'h
-  where
-    'x: 'n,
-    'n: 'x,
-    's: 'n,
-    'n: 'h,
-    'h: 'n,
-  {
-    let i = i.as_ref();
-    if i == self.lit { Some(()) } else { None }.into_iter()
-  }
-}
+pub mod doubly_anchored {
+  use super::*;
 
-type XXH3Output64 = u64;
-
-pub struct DoublyAnchoredMultipleLiteralsXXH3Vec<'n, A>
-where A: Allocator
-{
-  lits_with_hashes: Vec<(XXH3Output64, &'n [u8]), A>,
-}
-impl<'n, A> DoublyAnchoredMultipleLiteralsXXH3Vec<'n, A>
-where A: Allocator
-{
-  pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
-    let mut lits_with_hashes: Vec<(XXH3Output64, &'n [u8]), A> = Vec::new_in(alloc);
-    for l in lits.into_iter() {
-      let h = xxh3_64(l);
-      lits_with_hashes.push((h, l));
-    }
-    Self { lits_with_hashes }
+  pub struct DoublyAnchoredSingleLiteral<'n> {
+    lit: &'n [u8],
   }
-  pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
-  where A: Default {
-    Self::new_in(lits, A::default())
+  impl<'n> DoublyAnchoredSingleLiteral<'n> {
+    pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
   }
-}
-impl<'n, A> DoublyAnchoredMatcher<'n> for DoublyAnchoredMultipleLiteralsXXH3Vec<'n, A>
-where A: Allocator
-{
-  type I = [u8];
-  type S = &'n [u8];
-  type X = ();
-  fn invoke<'s, 'x, 'h>(
-    &'s self,
-    _x: &'x mut Self::X,
-    i: &'h Self::I,
-  ) -> impl Iterator<Item=Self::S>+'s+'x+'h
-  where
-    'x: 'n,
-    'n: 'x,
-    's: 'n,
-    'n: 'h,
-    'h: 'n,
-  {
-    let i = i.as_ref();
-    let h = xxh3_64(i);
-    self
-      .lits_with_hashes
-      .iter()
-      .filter(move |(h2, _)| h == *h2)
-      .map(|(_, l)| *l)
-      .filter(move |l| *l == i)
-  }
-}
-
-pub struct DoublyAnchoredMultipleLiteralsXXH3Set<'n, A>
-where A: Allocator
-{
-  lits_with_hashes: HashTable<&'n [u8], A>,
-}
-impl<'n, A> DoublyAnchoredMultipleLiteralsXXH3Set<'n, A>
-where A: Allocator
-{
-  pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
-    let mut lits_with_hashes: HashTable<&'n [u8], A> = HashTable::new_in(alloc);
-    for l in lits.into_iter() {
-      let h = xxh3_64(l);
-      let _ = lits_with_hashes
-        .entry(h, |l2| l == *l2, |l2| xxh3_64(l2))
-        .or_insert(l);
-    }
-    Self { lits_with_hashes }
-  }
-  pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
-  where A: Default {
-    Self::new_in(lits, A::default())
-  }
-}
-impl<'n, A> DoublyAnchoredMatcher<'n> for DoublyAnchoredMultipleLiteralsXXH3Set<'n, A>
-where A: Allocator
-{
-  type I = [u8];
-  type S = &'n [u8];
-  type X = ();
-  fn invoke<'s, 'x, 'h>(
-    &'s self,
-    _x: &'x mut Self::X,
-    i: &'h Self::I,
-  ) -> impl Iterator<Item=Self::S>+'s+'x+'h
-  where
-    'x: 'n,
-    'n: 'x,
-    's: 'n,
-    'n: 'h,
-    'h: 'n,
-  {
-    let i = i.as_ref();
-    let h = xxh3_64(i);
-    self
-      .lits_with_hashes
-      .find(h, |l| *l == i)
-      .map(|l| *l)
-      .into_iter()
-  }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LeftSingleLiteralContinuation {
-  pub offset: usize,
-}
-impl continuation::Continuation for LeftSingleLiteralContinuation {}
-
-#[derive(Debug, Copy, Clone)]
-pub struct LeftAnchoredSingleLiteralAutomaton<'n> {
-  lit: &'n [u8],
-}
-impl<'n> LeftAnchoredSingleLiteralAutomaton<'n> {
-  pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
-}
-impl<'n> continuation::Resumable<'n, LeftAnchoredSingleLiteralMatcher<'n>>
-  for LeftAnchoredSingleLiteralAutomaton<'n>
-{
-  type C = LeftSingleLiteralContinuation;
-
-  fn top(&self) -> Self::C { LeftSingleLiteralContinuation { offset: 0 } }
-
-  fn index<'s>(&'s self, c: Self::C) -> impl Into<LeftAnchoredSingleLiteralMatcher<'n>>+'s
-  where 's: 'n {
-    LeftAnchoredSingleLiteralMatcher {
-      base: *self,
-      cont: c,
+  impl<'n> DoublyAnchoredMatcher<'n> for DoublyAnchoredSingleLiteral<'n> {
+    type I = [u8];
+    type S = ();
+    type X = ();
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=Self::S>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+      'n: 'h,
+      'h: 'n,
+    {
+      let i = i.as_ref();
+      if i == self.lit { Some(()) } else { None }.into_iter()
     }
   }
-}
-impl<'n> LeftAnchoredAutomaton<'n> for LeftAnchoredSingleLiteralAutomaton<'n> {
-  type O = LeftAnchoredSingleLiteralMatcher<'n>;
-}
 
-#[derive(Debug, Copy, Clone)]
-pub struct LeftAnchoredSingleLiteralMatcher<'n> {
-  base: LeftAnchoredSingleLiteralAutomaton<'n>,
-  cont: LeftSingleLiteralContinuation,
-}
-impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteralMatcher<'n> {
-  type I = [u8];
-  type S = ();
-  type X = ();
-  type C = LeftSingleLiteralContinuation;
-  fn invoke<'s, 'x, 'h>(
-    &'s self,
-    _x: &'x mut Self::X,
-    i: &'h Self::I,
-  ) -> impl Iterator<Item=LeftAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
-  where
-    'x: 'n,
-    'n: 'x,
-    's: 'n,
-    'n: 'h,
-    'h: 'n,
+  type XXH3Output64 = u64;
+
+  pub struct DoublyAnchoredMultipleLiteralsXXH3Vec<'n, A>
+  where A: Allocator
   {
-    let Self {
-      base,
-      cont: LeftSingleLiteralContinuation { offset },
-    } = self;
-    let lit = &base.lit[*offset..];
-    if i.len() >= lit.len() {
-      if i.starts_with(lit) {
-        Some(LeftAnchoredMatchResult::CompleteMatch(
-          (),
-          ComponentOffset(lit.len().try_into().unwrap()),
-        ))
-      } else {
-        None
+    lits_with_hashes: Vec<(XXH3Output64, &'n [u8]), A>,
+  }
+  impl<'n, A> DoublyAnchoredMultipleLiteralsXXH3Vec<'n, A>
+  where A: Allocator
+  {
+    pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
+      let mut lits_with_hashes: Vec<(XXH3Output64, &'n [u8]), A> = Vec::new_in(alloc);
+      for l in lits.into_iter() {
+        let h = xxh3_64(l);
+        lits_with_hashes.push((h, l));
       }
-    } else {
-      if lit.starts_with(i) {
-        Some(LeftAnchoredMatchResult::PartialMatch(
-          LeftSingleLiteralContinuation {
-            offset: offset + i.len(),
-          },
-        ))
-      } else {
-        None
-      }
+      Self { lits_with_hashes }
     }
-    .into_iter()
-  }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LeftPrefixContinuation {
-  pub state: trie::NodeIndex,
-}
-impl continuation::Continuation for LeftPrefixContinuation {}
-
-
-#[derive(Debug, Clone)]
-pub struct LeftAnchoredMultipleLiteralsAutomaton<'n, A>
-where A: Allocator
-{
-  trie: trie::PrefixTrie<'n, A>,
-}
-impl<'n, A> LeftAnchoredMultipleLiteralsAutomaton<'n, A>
-where A: Allocator+Clone
-{
-  pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
-    Self {
-      trie: trie::PrefixTrie::traverse_in(lits, trie::PrefixDirection::Left, alloc),
+    pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
+    where A: Default {
+      Self::new_in(lits, A::default())
     }
   }
-
-  pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
-  where A: Default {
-    Self::new_in(lits, A::default())
-  }
-}
-impl<'t, 'n, A> continuation::Resumable<'t, LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>>
-  for LeftAnchoredMultipleLiteralsAutomaton<'n, A>
-where
-  A: Allocator,
-  't: 'n,
-  'n: 't,
-{
-  type C = LeftPrefixContinuation;
-
-  fn top(&self) -> Self::C {
-    LeftPrefixContinuation {
-      state: trie::PrefixTrie::<A>::get_top_node(),
-    }
-  }
-
-  fn index<'s>(
-    &'s self,
-    c: Self::C,
-  ) -> impl Into<LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>>+'s
-  where
-    's: 't,
+  impl<'n, A> DoublyAnchoredMatcher<'n> for DoublyAnchoredMultipleLiteralsXXH3Vec<'n, A>
+  where A: Allocator
   {
-    let LeftPrefixContinuation { state } = c;
-    let node = self.trie.get_node_by_index(state).unwrap();
-    LeftAnchoredMultipleLiteralsMatcher {
-      automaton: self,
-      cont: c,
-      node,
+    type I = [u8];
+    type S = &'n [u8];
+    type X = ();
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=Self::S>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+      'n: 'h,
+      'h: 'n,
+    {
+      let i = i.as_ref();
+      let h = xxh3_64(i);
+      self
+        .lits_with_hashes
+        .iter()
+        .filter(move |(h2, _)| h == *h2)
+        .map(|(_, l)| *l)
+        .filter(move |l| *l == i)
     }
   }
-}
-impl<'t, 'n, A> LeftAnchoredAutomaton<'t> for LeftAnchoredMultipleLiteralsAutomaton<'n, A>
-where
-  A: Allocator+'t,
-  't: 'n,
-  'n: 't,
-{
-  type O = LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>;
+
+  pub struct DoublyAnchoredMultipleLiteralsXXH3Set<'n, A>
+  where A: Allocator
+  {
+    lits_with_hashes: HashTable<&'n [u8], A>,
+  }
+  impl<'n, A> DoublyAnchoredMultipleLiteralsXXH3Set<'n, A>
+  where A: Allocator
+  {
+    pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
+      let mut lits_with_hashes: HashTable<&'n [u8], A> = HashTable::new_in(alloc);
+      for l in lits.into_iter() {
+        let h = xxh3_64(l);
+        let _ = lits_with_hashes
+          .entry(h, |l2| l == *l2, |l2| xxh3_64(l2))
+          .or_insert(l);
+      }
+      Self { lits_with_hashes }
+    }
+    pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
+    where A: Default {
+      Self::new_in(lits, A::default())
+    }
+  }
+  impl<'n, A> DoublyAnchoredMatcher<'n> for DoublyAnchoredMultipleLiteralsXXH3Set<'n, A>
+  where A: Allocator
+  {
+    type I = [u8];
+    type S = &'n [u8];
+    type X = ();
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=Self::S>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+      'n: 'h,
+      'h: 'n,
+    {
+      let i = i.as_ref();
+      let h = xxh3_64(i);
+      self
+        .lits_with_hashes
+        .find(h, |l| *l == i)
+        .map(|l| *l)
+        .into_iter()
+    }
+  }
 }
 
 enum PrefixNodeState<'t, 'n, C, A>
@@ -319,40 +173,194 @@ where A: Allocator
   Empty,
 }
 
-struct LeftPrefixIt<'t, 'n, 'h, A>
-where A: Allocator
-{
-  automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
-  input: &'h [u8],
-  node_state: PrefixNodeState<'t, 'n, LeftPrefixContinuation, A>,
-}
-impl<'t, 'n, 'h, A> LeftPrefixIt<'t, 'n, 'h, A>
-where A: Allocator
-{
-  pub fn from_automaton_and_input_and_start_node(
+pub mod left_anchored {
+  use super::*;
+
+  #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  pub struct LeftSingleLiteralContinuation {
+    pub offset: usize,
+  }
+  impl continuation::Continuation for LeftSingleLiteralContinuation {}
+
+  #[derive(Debug, Copy, Clone)]
+  pub struct LeftAnchoredSingleLiteralAutomaton<'n> {
+    lit: &'n [u8],
+  }
+  impl<'n> LeftAnchoredSingleLiteralAutomaton<'n> {
+    pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
+  }
+  impl<'n> continuation::Resumable<'n, LeftAnchoredSingleLiteralMatcher<'n>>
+    for LeftAnchoredSingleLiteralAutomaton<'n>
+  {
+    type C = LeftSingleLiteralContinuation;
+
+    fn top(&self) -> Self::C { LeftSingleLiteralContinuation { offset: 0 } }
+
+    fn index<'s>(&'s self, c: Self::C) -> impl Into<LeftAnchoredSingleLiteralMatcher<'n>>+'s
+    where 's: 'n {
+      LeftAnchoredSingleLiteralMatcher {
+        base: *self,
+        cont: c,
+      }
+    }
+  }
+  impl<'n> LeftAnchoredAutomaton<'n> for LeftAnchoredSingleLiteralAutomaton<'n> {
+    type O = LeftAnchoredSingleLiteralMatcher<'n>;
+  }
+
+  #[derive(Debug, Copy, Clone)]
+  pub struct LeftAnchoredSingleLiteralMatcher<'n> {
+    base: LeftAnchoredSingleLiteralAutomaton<'n>,
+    cont: LeftSingleLiteralContinuation,
+  }
+  impl<'n> LeftAnchoredMatcher<'n> for LeftAnchoredSingleLiteralMatcher<'n> {
+    type I = [u8];
+    type S = ();
+    type X = ();
+    type C = LeftSingleLiteralContinuation;
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=LeftAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+      'n: 'h,
+      'h: 'n,
+    {
+      let Self {
+        base,
+        cont: LeftSingleLiteralContinuation { offset },
+      } = self;
+      let lit = &base.lit[*offset..];
+      if i.len() >= lit.len() {
+        if i.starts_with(lit) {
+          Some(LeftAnchoredMatchResult::CompleteMatch(
+            (),
+            ComponentOffset(lit.len().try_into().unwrap()),
+          ))
+        } else {
+          None
+        }
+      } else {
+        if lit.starts_with(i) {
+          Some(LeftAnchoredMatchResult::PartialMatch(
+            LeftSingleLiteralContinuation {
+              offset: offset + i.len(),
+            },
+          ))
+        } else {
+          None
+        }
+      }
+      .into_iter()
+    }
+  }
+
+  #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  pub struct LeftPrefixContinuation {
+    pub state: trie::NodeIndex,
+  }
+  impl continuation::Continuation for LeftPrefixContinuation {}
+
+
+  #[derive(Debug, Clone)]
+  pub struct LeftAnchoredMultipleLiteralsAutomaton<'n, A>
+  where A: Allocator
+  {
+    trie: trie::PrefixTrie<'n, A>,
+  }
+  impl<'n, A> LeftAnchoredMultipleLiteralsAutomaton<'n, A>
+  where A: Allocator+Clone
+  {
+    pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
+      Self {
+        trie: trie::PrefixTrie::traverse_in(lits, trie::PrefixDirection::Left, alloc),
+      }
+    }
+
+    pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
+    where A: Default {
+      Self::new_in(lits, A::default())
+    }
+  }
+  impl<'t, 'n, A> continuation::Resumable<'t, LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>>
+    for LeftAnchoredMultipleLiteralsAutomaton<'n, A>
+  where
+    A: Allocator,
+    't: 'n,
+    'n: 't,
+  {
+    type C = LeftPrefixContinuation;
+
+    fn top(&self) -> Self::C {
+      LeftPrefixContinuation {
+        state: trie::PrefixTrie::<A>::get_top_node(),
+      }
+    }
+
+    fn index<'s>(
+      &'s self,
+      c: Self::C,
+    ) -> impl Into<LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>>+'s
+    where
+      's: 't,
+    {
+      let LeftPrefixContinuation { state } = c;
+      let node = self.trie.get_node_by_index(state).unwrap();
+      LeftAnchoredMultipleLiteralsMatcher {
+        automaton: self,
+        cont: c,
+        node,
+      }
+    }
+  }
+  impl<'t, 'n, A> LeftAnchoredAutomaton<'t> for LeftAnchoredMultipleLiteralsAutomaton<'n, A>
+  where
+    A: Allocator+'t,
+    't: 'n,
+    'n: 't,
+  {
+    type O = LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>;
+  }
+
+
+  struct LeftPrefixIt<'t, 'n, 'h, A>
+  where A: Allocator
+  {
     automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
     input: &'h [u8],
-    cont: LeftPrefixContinuation,
-    start_node: &'t trie::Node<u8, &'n [u8], A>,
-  ) -> Self {
-    Self {
-      automaton,
-      input,
-      /* Empty literals are not allowed, so we discount any possible end state from any start
-       * state. This avoids double-counting end states. */
-      node_state: PrefixNodeState::NodeMinusEndState(start_node, cont, ComponentOffset(0)),
+    node_state: PrefixNodeState<'t, 'n, LeftPrefixContinuation, A>,
+  }
+  impl<'t, 'n, 'h, A> LeftPrefixIt<'t, 'n, 'h, A>
+  where A: Allocator
+  {
+    pub fn from_automaton_and_input_and_start_node(
+      automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
+      input: &'h [u8],
+      cont: LeftPrefixContinuation,
+      start_node: &'t trie::Node<u8, &'n [u8], A>,
+    ) -> Self {
+      Self {
+        automaton,
+        input,
+        /* Empty literals are not allowed, so we discount any possible end state from any start
+         * state. This avoids double-counting end states. */
+        node_state: PrefixNodeState::NodeMinusEndState(start_node, cont, ComponentOffset(0)),
+      }
     }
   }
-}
-impl<'t, 'n, 'h, A> Iterator for LeftPrefixIt<'t, 'n, 'h, A>
-where
-  A: Allocator,
-  't: 'n,
-{
-  type Item = LeftAnchoredMatchResult<&'n [u8], LeftPrefixContinuation>;
+  impl<'t, 'n, 'h, A> Iterator for LeftPrefixIt<'t, 'n, 'h, A>
+  where
+    A: Allocator,
+    't: 'n,
+  {
+    type Item = LeftAnchoredMatchResult<&'n [u8], LeftPrefixContinuation>;
 
-  fn next(&mut self) -> Option<Self::Item> {
-    let (mut cur_trie_node, mut cont, mut offset) =
+    fn next(&mut self) -> Option<Self::Item> {
+      let (mut cur_trie_node, mut cont, mut offset) =
       /* Replace the state with empty upon each iteration. */
       match mem::replace(&mut self.node_state, PrefixNodeState::Empty) {
         PrefixNodeState::Empty => return None,
@@ -366,257 +374,261 @@ where
         PrefixNodeState::NodeMinusEndState(node, cont, offset) => (node, cont, offset),
       };
 
-    let remaining_input = &self.input[offset.as_size()..];
-    for token in remaining_input.iter() {
-      match cur_trie_node.challenge(*token) {
-        /* Prefix match failed! We are TOTALLY done with iteration! */
-        None => return None,
-        /* Succeeded! Let's continue. */
-        Some(next_index) => {
-          offset.checked_increment();
-          cont = LeftPrefixContinuation { state: next_index };
+      let remaining_input = &self.input[offset.as_size()..];
+      for token in remaining_input.iter() {
+        match cur_trie_node.challenge(*token) {
+          /* Prefix match failed! We are TOTALLY done with iteration! */
+          None => return None,
+          /* Succeeded! Let's continue. */
+          Some(next_index) => {
+            offset.checked_increment();
+            cont = LeftPrefixContinuation { state: next_index };
 
-          let LeftAnchoredMultipleLiteralsMatcher {
-            node: next_node, ..
-          } = self.automaton.index(cont).into();
+            let LeftAnchoredMultipleLiteralsMatcher {
+              node: next_node, ..
+            } = self.automaton.index(cont).into();
 
-          if let Some(id) = next_node.end() {
-            self.node_state = PrefixNodeState::NodeMinusEndState(next_node, cont, offset);
-            return Some(LeftAnchoredMatchResult::CompleteMatch(id, offset));
-          }
+            if let Some(id) = next_node.end() {
+              self.node_state = PrefixNodeState::NodeMinusEndState(next_node, cont, offset);
+              return Some(LeftAnchoredMatchResult::CompleteMatch(id, offset));
+            }
 
-          cur_trie_node = next_node;
-        },
-      }
-    }
-
-    /* If we can't possibly consume any more input, then exit here without
-     * producing any continuation. */
-    if cur_trie_node.is_branchless() {
-      return None;
-    }
-
-    Some(LeftAnchoredMatchResult::PartialMatch(cont))
-  }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>
-where A: Allocator
-{
-  automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
-  cont: LeftPrefixContinuation,
-  node: &'t trie::Node<u8, &'n [u8], A>,
-}
-impl<'t, 'n, A> LeftAnchoredMatcher<'n> for LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>
-where A: Allocator
-{
-  type I = [u8];
-  type S = &'n [u8];
-  type X = ();
-  type C = LeftPrefixContinuation;
-  fn invoke<'s, 'x, 'h>(
-    &'s self,
-    _x: &'x mut Self::X,
-    i: &'h Self::I,
-  ) -> impl Iterator<Item=LeftAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
-  where
-    'x: 'n,
-    'n: 'x,
-    's: 'n,
-    'n: 'h,
-    'h: 'n,
-  {
-    assert!(!i.is_empty());
-    LeftPrefixIt::from_automaton_and_input_and_start_node(self.automaton, i, self.cont, self.node)
-  }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RightSingleLiteralContinuation {
-  pub offset: usize,
-}
-impl continuation::Continuation for RightSingleLiteralContinuation {}
-
-#[derive(Debug, Copy, Clone)]
-pub struct RightAnchoredSingleLiteralAutomaton<'n> {
-  lit: &'n [u8],
-}
-impl<'n> RightAnchoredSingleLiteralAutomaton<'n> {
-  pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
-}
-impl<'n> continuation::Resumable<'n, RightAnchoredSingleLiteralMatcher<'n>>
-  for RightAnchoredSingleLiteralAutomaton<'n>
-{
-  type C = RightSingleLiteralContinuation;
-
-  fn top(&self) -> Self::C { RightSingleLiteralContinuation { offset: 0 } }
-
-  fn index<'s>(&'s self, c: Self::C) -> impl Into<RightAnchoredSingleLiteralMatcher<'n>>+'s
-  where 's: 'n {
-    RightAnchoredSingleLiteralMatcher {
-      base: *self,
-      cont: c,
-    }
-  }
-}
-impl<'n> RightAnchoredAutomaton<'n> for RightAnchoredSingleLiteralAutomaton<'n> {
-  type O = RightAnchoredSingleLiteralMatcher<'n>;
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct RightAnchoredSingleLiteralMatcher<'n> {
-  base: RightAnchoredSingleLiteralAutomaton<'n>,
-  cont: RightSingleLiteralContinuation,
-}
-impl<'n> RightAnchoredMatcher<'n> for RightAnchoredSingleLiteralMatcher<'n> {
-  type I = [u8];
-  type S = ();
-  type X = ();
-  type C = RightSingleLiteralContinuation;
-  fn invoke<'s, 'x, 'h>(
-    &'s self,
-    _x: &'x mut Self::X,
-    i: &'h Self::I,
-  ) -> impl Iterator<Item=RightAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
-  where
-    'x: 'n,
-    'n: 'x,
-    's: 'n,
-    'n: 'h,
-    'h: 'n,
-  {
-    let Self {
-      base,
-      cont: RightSingleLiteralContinuation { offset },
-    } = self;
-    let lit = &base.lit[..(base.lit.len() - offset)];
-    if i.len() >= lit.len() {
-      if i.ends_with(lit) {
-        Some(RightAnchoredMatchResult::CompleteMatch(
-          (),
-          ComponentOffset(lit.len().try_into().unwrap()),
-        ))
-      } else {
-        None
-      }
-    } else {
-      if lit.ends_with(i) {
-        Some(RightAnchoredMatchResult::PartialMatch(
-          RightSingleLiteralContinuation {
-            offset: offset + i.len(),
+            cur_trie_node = next_node;
           },
-        ))
-      } else {
-        None
+        }
+      }
+
+      /* If we can't possibly consume any more input, then exit here without
+       * producing any continuation. */
+      if cur_trie_node.is_branchless() {
+        return None;
+      }
+
+      Some(LeftAnchoredMatchResult::PartialMatch(cont))
+    }
+  }
+
+  #[derive(Debug, Copy, Clone)]
+  pub struct LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>
+  where A: Allocator
+  {
+    automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
+    cont: LeftPrefixContinuation,
+    node: &'t trie::Node<u8, &'n [u8], A>,
+  }
+  impl<'t, 'n, A> LeftAnchoredMatcher<'n> for LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>
+  where A: Allocator
+  {
+    type I = [u8];
+    type S = &'n [u8];
+    type X = ();
+    type C = LeftPrefixContinuation;
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=LeftAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+      'n: 'h,
+      'h: 'n,
+    {
+      assert!(!i.is_empty());
+      LeftPrefixIt::from_automaton_and_input_and_start_node(self.automaton, i, self.cont, self.node)
+    }
+  }
+}
+
+pub mod right_anchored {
+  use super::*;
+
+  #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  pub struct RightSingleLiteralContinuation {
+    pub offset: usize,
+  }
+  impl continuation::Continuation for RightSingleLiteralContinuation {}
+
+  #[derive(Debug, Copy, Clone)]
+  pub struct RightAnchoredSingleLiteralAutomaton<'n> {
+    lit: &'n [u8],
+  }
+  impl<'n> RightAnchoredSingleLiteralAutomaton<'n> {
+    pub fn new(lit: &'n [u8]) -> Self { Self { lit } }
+  }
+  impl<'n> continuation::Resumable<'n, RightAnchoredSingleLiteralMatcher<'n>>
+    for RightAnchoredSingleLiteralAutomaton<'n>
+  {
+    type C = RightSingleLiteralContinuation;
+
+    fn top(&self) -> Self::C { RightSingleLiteralContinuation { offset: 0 } }
+
+    fn index<'s>(&'s self, c: Self::C) -> impl Into<RightAnchoredSingleLiteralMatcher<'n>>+'s
+    where 's: 'n {
+      RightAnchoredSingleLiteralMatcher {
+        base: *self,
+        cont: c,
       }
     }
-    .into_iter()
   }
-}
+  impl<'n> RightAnchoredAutomaton<'n> for RightAnchoredSingleLiteralAutomaton<'n> {
+    type O = RightAnchoredSingleLiteralMatcher<'n>;
+  }
 
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RightPrefixContinuation {
-  pub state: trie::NodeIndex,
-}
-impl continuation::Continuation for RightPrefixContinuation {}
-
-
-#[derive(Debug, Clone)]
-pub struct RightAnchoredMultipleLiteralsAutomaton<'n, A>
-where A: Allocator
-{
-  trie: trie::PrefixTrie<'n, A>,
-}
-impl<'n, A> RightAnchoredMultipleLiteralsAutomaton<'n, A>
-where A: Allocator+Clone
-{
-  pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
-    Self {
-      trie: trie::PrefixTrie::traverse_in(lits, trie::PrefixDirection::Right, alloc),
+  #[derive(Debug, Copy, Clone)]
+  pub struct RightAnchoredSingleLiteralMatcher<'n> {
+    base: RightAnchoredSingleLiteralAutomaton<'n>,
+    cont: RightSingleLiteralContinuation,
+  }
+  impl<'n> RightAnchoredMatcher<'n> for RightAnchoredSingleLiteralMatcher<'n> {
+    type I = [u8];
+    type S = ();
+    type X = ();
+    type C = RightSingleLiteralContinuation;
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=RightAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+      'n: 'h,
+      'h: 'n,
+    {
+      let Self {
+        base,
+        cont: RightSingleLiteralContinuation { offset },
+      } = self;
+      let lit = &base.lit[..(base.lit.len() - offset)];
+      if i.len() >= lit.len() {
+        if i.ends_with(lit) {
+          Some(RightAnchoredMatchResult::CompleteMatch(
+            (),
+            ComponentOffset(lit.len().try_into().unwrap()),
+          ))
+        } else {
+          None
+        }
+      } else {
+        if lit.ends_with(i) {
+          Some(RightAnchoredMatchResult::PartialMatch(
+            RightSingleLiteralContinuation {
+              offset: offset + i.len(),
+            },
+          ))
+        } else {
+          None
+        }
+      }
+      .into_iter()
     }
   }
 
-  pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
-  where A: Default {
-    Self::new_in(lits, A::default())
-  }
-}
-impl<'t, 'n, A> continuation::Resumable<'t, RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>>
-  for RightAnchoredMultipleLiteralsAutomaton<'n, A>
-where
-  A: Allocator,
-  't: 'n,
-  'n: 't,
-{
-  type C = RightPrefixContinuation;
 
-  fn top(&self) -> Self::C {
-    RightPrefixContinuation {
-      state: trie::PrefixTrie::<A>::get_top_node(),
-    }
+  #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  pub struct RightPrefixContinuation {
+    pub state: trie::NodeIndex,
   }
+  impl continuation::Continuation for RightPrefixContinuation {}
 
-  fn index<'s>(
-    &'s self,
-    c: Self::C,
-  ) -> impl Into<RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>>+'s
-  where
-    's: 't,
+
+  #[derive(Debug, Clone)]
+  pub struct RightAnchoredMultipleLiteralsAutomaton<'n, A>
+  where A: Allocator
   {
-    let RightPrefixContinuation { state } = c;
-    let node = self.trie.get_node_by_index(state).unwrap();
-    RightAnchoredMultipleLiteralsMatcher {
-      automaton: self,
-      cont: c,
-      node,
+    trie: trie::PrefixTrie<'n, A>,
+  }
+  impl<'n, A> RightAnchoredMultipleLiteralsAutomaton<'n, A>
+  where A: Allocator+Clone
+  {
+    pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
+      Self {
+        trie: trie::PrefixTrie::traverse_in(lits, trie::PrefixDirection::Right, alloc),
+      }
+    }
+
+    pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
+    where A: Default {
+      Self::new_in(lits, A::default())
     }
   }
-}
-impl<'t, 'n, A> RightAnchoredAutomaton<'t> for RightAnchoredMultipleLiteralsAutomaton<'n, A>
-where
-  A: Allocator+'t,
-  't: 'n,
-  'n: 't,
-{
-  type O = RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>;
-}
+  impl<'t, 'n, A> continuation::Resumable<'t, RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>>
+    for RightAnchoredMultipleLiteralsAutomaton<'n, A>
+  where
+    A: Allocator,
+    't: 'n,
+    'n: 't,
+  {
+    type C = RightPrefixContinuation;
 
-struct RightPrefixIt<'t, 'n, 'h, A>
-where A: Allocator
-{
-  automaton: &'t RightAnchoredMultipleLiteralsAutomaton<'n, A>,
-  input: &'h [u8],
-  node_state: PrefixNodeState<'t, 'n, RightPrefixContinuation, A>,
-}
-impl<'t, 'n, 'h, A> RightPrefixIt<'t, 'n, 'h, A>
-where A: Allocator
-{
-  pub fn from_automaton_and_input_and_start_node(
+    fn top(&self) -> Self::C {
+      RightPrefixContinuation {
+        state: trie::PrefixTrie::<A>::get_top_node(),
+      }
+    }
+
+    fn index<'s>(
+      &'s self,
+      c: Self::C,
+    ) -> impl Into<RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>>+'s
+    where
+      's: 't,
+    {
+      let RightPrefixContinuation { state } = c;
+      let node = self.trie.get_node_by_index(state).unwrap();
+      RightAnchoredMultipleLiteralsMatcher {
+        automaton: self,
+        cont: c,
+        node,
+      }
+    }
+  }
+  impl<'t, 'n, A> RightAnchoredAutomaton<'t> for RightAnchoredMultipleLiteralsAutomaton<'n, A>
+  where
+    A: Allocator+'t,
+    't: 'n,
+    'n: 't,
+  {
+    type O = RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>;
+  }
+
+  struct RightPrefixIt<'t, 'n, 'h, A>
+  where A: Allocator
+  {
     automaton: &'t RightAnchoredMultipleLiteralsAutomaton<'n, A>,
     input: &'h [u8],
-    cont: RightPrefixContinuation,
-    start_node: &'t trie::Node<u8, &'n [u8], A>,
-  ) -> Self {
-    Self {
-      automaton,
-      input,
-      /* Empty literals are not allowed, so we discount any possible end state from any start
-       * state. This avoids double-counting end states. */
-      node_state: PrefixNodeState::NodeMinusEndState(start_node, cont, ComponentOffset(0)),
+    node_state: PrefixNodeState<'t, 'n, RightPrefixContinuation, A>,
+  }
+  impl<'t, 'n, 'h, A> RightPrefixIt<'t, 'n, 'h, A>
+  where A: Allocator
+  {
+    pub fn from_automaton_and_input_and_start_node(
+      automaton: &'t RightAnchoredMultipleLiteralsAutomaton<'n, A>,
+      input: &'h [u8],
+      cont: RightPrefixContinuation,
+      start_node: &'t trie::Node<u8, &'n [u8], A>,
+    ) -> Self {
+      Self {
+        automaton,
+        input,
+        /* Empty literals are not allowed, so we discount any possible end state from any start
+         * state. This avoids double-counting end states. */
+        node_state: PrefixNodeState::NodeMinusEndState(start_node, cont, ComponentOffset(0)),
+      }
     }
   }
-}
-impl<'t, 'n, 'h, A> Iterator for RightPrefixIt<'t, 'n, 'h, A>
-where
-  A: Allocator,
-  't: 'n,
-{
-  type Item = RightAnchoredMatchResult<&'n [u8], RightPrefixContinuation>;
+  impl<'t, 'n, 'h, A> Iterator for RightPrefixIt<'t, 'n, 'h, A>
+  where
+    A: Allocator,
+    't: 'n,
+  {
+    type Item = RightAnchoredMatchResult<&'n [u8], RightPrefixContinuation>;
 
-  fn next(&mut self) -> Option<Self::Item> {
-    let (mut cur_trie_node, mut cont, mut offset) =
+    fn next(&mut self) -> Option<Self::Item> {
+      let (mut cur_trie_node, mut cont, mut offset) =
       /* Replace the state with empty upon each iteration. */
       match mem::replace(&mut self.node_state, PrefixNodeState::Empty) {
         PrefixNodeState::Empty => return None,
@@ -630,264 +642,83 @@ where
         PrefixNodeState::NodeMinusEndState(node, cont, offset) => (node, cont, offset),
       };
 
-    let remaining_input = &self.input[..(self.input.len() - offset.as_size())];
-    for token in remaining_input.iter().rev() {
-      match cur_trie_node.challenge(*token) {
-        /* Prefix match failed! We are TOTALLY done with iteration! */
-        None => return None,
-        /* Succeeded! Let's continue. */
-        Some(next_index) => {
-          offset.checked_increment();
-          cont = RightPrefixContinuation { state: next_index };
+      let remaining_input = &self.input[..(self.input.len() - offset.as_size())];
+      for token in remaining_input.iter().rev() {
+        match cur_trie_node.challenge(*token) {
+          /* Prefix match failed! We are TOTALLY done with iteration! */
+          None => return None,
+          /* Succeeded! Let's continue. */
+          Some(next_index) => {
+            offset.checked_increment();
+            cont = RightPrefixContinuation { state: next_index };
 
-          let RightAnchoredMultipleLiteralsMatcher {
-            node: next_node, ..
-          } = self.automaton.index(cont).into();
+            let RightAnchoredMultipleLiteralsMatcher {
+              node: next_node, ..
+            } = self.automaton.index(cont).into();
 
-          if let Some(id) = next_node.end() {
-            self.node_state = PrefixNodeState::NodeMinusEndState(next_node, cont, offset);
-            return Some(RightAnchoredMatchResult::CompleteMatch(id, offset));
-          }
+            if let Some(id) = next_node.end() {
+              self.node_state = PrefixNodeState::NodeMinusEndState(next_node, cont, offset);
+              return Some(RightAnchoredMatchResult::CompleteMatch(id, offset));
+            }
 
-          cur_trie_node = next_node;
-        },
+            cur_trie_node = next_node;
+          },
+        }
       }
-    }
 
-    /* If we can't possibly consume any more input, then exit here without
-     * producing any continuation. */
-    if cur_trie_node.is_branchless() {
-      return None;
-    }
+      /* If we can't possibly consume any more input, then exit here without
+       * producing any continuation. */
+      if cur_trie_node.is_branchless() {
+        return None;
+      }
 
-    Some(RightAnchoredMatchResult::PartialMatch(cont))
+      Some(RightAnchoredMatchResult::PartialMatch(cont))
+    }
   }
-}
 
-#[derive(Debug, Copy, Clone)]
-pub struct RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>
-where A: Allocator
-{
-  automaton: &'t RightAnchoredMultipleLiteralsAutomaton<'n, A>,
-  cont: RightPrefixContinuation,
-  node: &'t trie::Node<u8, &'n [u8], A>,
-}
-impl<'t, 'n, A> RightAnchoredMatcher<'n> for RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>
-where A: Allocator
-{
-  type I = [u8];
-  type S = &'n [u8];
-  type X = ();
-  type C = RightPrefixContinuation;
-  fn invoke<'s, 'x, 'h>(
-    &'s self,
-    _x: &'x mut Self::X,
-    i: &'h Self::I,
-  ) -> impl Iterator<Item=RightAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
-  where
-    'x: 'n,
-    'n: 'x,
-    's: 'n,
-    'n: 'h,
-    'h: 'n,
+  #[derive(Debug, Copy, Clone)]
+  pub struct RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>
+  where A: Allocator
   {
-    assert!(!i.is_empty());
-    RightPrefixIt::from_automaton_and_input_and_start_node(self.automaton, i, self.cont, self.node)
+    automaton: &'t RightAnchoredMultipleLiteralsAutomaton<'n, A>,
+    cont: RightPrefixContinuation,
+    node: &'t trie::Node<u8, &'n [u8], A>,
   }
-}
-
-/* TODO: backwards? */
-pub struct UnanchoredSingleLiteralRabinKarp<'n> {
-  finder: memmem::CompiledRabinKarpFinder<'n>,
-}
-impl<'n> UnanchoredSingleLiteralRabinKarp<'n> {
-  pub fn new(lit: &'n [u8]) -> Self {
-    Self {
-      finder: memmem::CompiledRabinKarpFinder::for_needle(lit),
+  impl<'t, 'n, A> RightAnchoredMatcher<'n> for RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>
+  where A: Allocator
+  {
+    type I = [u8];
+    type S = &'n [u8];
+    type X = ();
+    type C = RightPrefixContinuation;
+    fn invoke<'s, 'x, 'h>(
+      &'s self,
+      _x: &'x mut Self::X,
+      i: &'h Self::I,
+    ) -> impl Iterator<Item=RightAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
+    where
+      'x: 'n,
+      'n: 'x,
+      's: 'n,
+      'n: 'h,
+      'h: 'n,
+    {
+      assert!(!i.is_empty());
+      RightPrefixIt::from_automaton_and_input_and_start_node(
+        self.automaton,
+        i,
+        self.cont,
+        self.node,
+      )
     }
   }
 }
-
-struct SingleLiteralRabinKarpInnerMatchIterator<'h, 'n> {
-  finder: memmem::CompiledRabinKarpFinder<'n>,
-  haystack: &'h [u8],
-  pos: usize,
-}
-impl<'h, 'n> Iterator for SingleLiteralRabinKarpInnerMatchIterator<'h, 'n> {
-  type Item = IntraComponentInterval;
-
-  fn next(&mut self) -> Option<Self::Item> {
-    let haystack = self.haystack.get(self.pos..)?;
-    let idx = self.finder.find(haystack)?;
-    /* Iterate to the beginning of the match. */
-    let pos = self.pos + idx;
-    /* NB: Now go exactly one past, so we can find overlapping matches! */
-    self.pos = pos + 1;
-
-    let int = IntraComponentInterval {
-      left: ComponentOffset(pos.try_into().unwrap()),
-      right: ComponentOffset((pos + self.finder.needle().len()).try_into().unwrap()),
-    };
-    Some(int)
-  }
-
-  fn size_hint(&self) -> (usize, Option<usize>) {
-    let remaining_haystack_len = match self.haystack.len().checked_sub(self.pos) {
-      None => return (0, Some(0)),
-      Some(haystack_len) => haystack_len,
-    };
-    let needle_len = self.finder.needle().len();
-    if needle_len == 0 {
-      // Empty needles always succeed and match at every point
-      // (including the very end)
-      return (
-        remaining_haystack_len.saturating_add(1),
-        remaining_haystack_len.checked_add(1),
-      );
-    }
-    /* Can match once if needle_len == haystack_len, then once further for
-    each additional byte.
-    This is many more than the quotient which is used in FindIter, since it
-    does not check for
-    overlapping matches. */
-    (
-      0,
-      Some(remaining_haystack_len.saturating_sub(needle_len - 1)),
-    )
-  }
-}
-
-/* impl<'n> UnanchoredMatcher<'n> for UnanchoredSingleLiteralRabinKarp<'n> { */
-/* type I = [u8]; */
-/* type S = (); */
-/* type X = (); */
-/* type LC = LeftSingleLiteralContinuation<'n>; */
-/* type RC = RightSingleLiteralContinuation<'n>; */
-/* fn invoke<'s, 'x, 'h>( */
-/* &'s self, */
-/* _x: &'x mut Self::X, */
-/* i: &'h Self::I, */
-/* ) -> impl Iterator<Item=UnanchoredMatchResult<Self::S, Self::LC,
- * Self::RC>>+'s+'x+'h */
-/* where */
-/* 'x: 'n, */
-/* 'n: 'x, */
-/* 's: 'n, */
-/* 'n: 'h, */
-/* 'h: 'n, */
-/* { */
-/* let inner = SingleLiteralRabinKarpInnerMatchIterator { */
-/* finder: self.finder.as_ref(), */
-/* haystack: i, */
-/* pos: 0, */
-/* } */
-/* .map(|int| UnanchoredMatchResult::CompleteMatch((), int)); */
-/* /\* let left = *\/ */
-/* inner */
-/* } */
-/* } */
-
-/* /\* TODO: backwards? *\/ */
-/* pub struct UnanchoredSingleLiteralMemMem<'n> { */
-/* finder: memmem::Finder<'n>, */
-/* } */
-/* impl<'n> UnanchoredSingleLiteralMemMem<'n> { */
-/* pub fn new(lit: &'n [u8]) -> Self { */
-/* Self { */
-/* finder: memmem::Finder::new(lit), */
-/* } */
-/* } */
-/* } */
-
-/* impl state::State for memmem::PrefilterState {} */
-
-/* struct SingleLiteralMemMemInnerMatchIterator<'x, 'h, 'n> { */
-/* finder: memmem::Finder<'n>, */
-/* prestate: &'x mut memmem::PrefilterState, */
-/* haystack: &'h [u8], */
-/* pos: usize, */
-/* } */
-/* impl<'x, 'h, 'n> Iterator for SingleLiteralMemMemInnerMatchIterator<'x,
- * 'h, 'n> { */
-/* type Item = IntraComponentInterval; */
-
-/* fn next(&mut self) -> Option<Self::Item> { */
-/* let haystack = self.haystack.get(self.pos..)?; */
-/* let idx = self.finder.find_state(self.prestate, haystack)?; */
-/* /\* Iterate to the beginning of the match. *\/ */
-/* let pos = self.pos + idx; */
-/* /\* NB: Now go exactly one past, so we can find overlapping matches! *\/ */
-/* self.pos = pos + 1; */
-
-/* let int = IntraComponentInterval { */
-/* left: ComponentOffset(pos.try_into().unwrap()), */
-/* right: ComponentOffset((pos +
- * self.finder.needle().len()).try_into().unwrap()), */
-/* }; */
-/* Some(int) */
-/* } */
-
-/* fn size_hint(&self) -> (usize, Option<usize>) { */
-/* let remaining_haystack_len = match
- * self.haystack.len().checked_sub(self.pos) { */
-/* None => return (0, Some(0)), */
-/* Some(haystack_len) => haystack_len, */
-/* }; */
-/* let needle_len = self.finder.needle().len(); */
-/* if needle_len == 0 { */
-/* // Empty needles always succeed and match at every point */
-/* // (including the very end) */
-/* return ( */
-/* remaining_haystack_len.saturating_add(1), */
-/* remaining_haystack_len.checked_add(1), */
-/* ); */
-/* } */
-/* /\* Can match once if needle_len == haystack_len, then once further for */
-/* each additional byte. */
-/* This is many more than the quotient which is used in FindIter, since it */
-/* does not check for */
-/* overlapping matches. *\/ */
-/* ( */
-/* 0, */
-/* Some(remaining_haystack_len.saturating_sub(needle_len - 1)), */
-/* ) */
-/* } */
-/* } */
-
-/* impl<'n> UnanchoredMatcher<'n> for UnanchoredSingleLiteralMemMem<'n> { */
-/* type I = [u8]; */
-/* type S = (); */
-/* type X = memmem::PrefilterState; */
-/* type LC = LeftSingleLiteralContinuation<'n>; */
-/* type RC = RightSingleLiteralContinuation<'n>; */
-/* fn invoke<'s, 'x, 'h>( */
-/* &'s self, */
-/* x: &'x mut Self::X, */
-/* i: &'h Self::I, */
-/* ) -> impl Iterator<Item=UnanchoredMatchResult<Self::S, Self::LC,
- * Self::RC>>+'s+'x+'h */
-/* where */
-/* 'x: 'n, */
-/* 'n: 'x, */
-/* 's: 'n, */
-/* 'n: 'h, */
-/* 'h: 'n, */
-/* { */
-/* SingleLiteralMemMemInnerMatchIterator { */
-/* finder: self.finder.as_ref(), */
-/* prestate: x, */
-/* haystack: i, */
-/* pos: 0, */
-/* } */
-/* .map(|int| UnanchoredMatchResult::CompleteMatch((), int)) */
-/* } */
-/* } */
 
 #[cfg(test)]
 mod test {
   use std::alloc::System;
 
-  use super::*;
+  use super::{doubly_anchored::*, left_anchored::*, right_anchored::*, *};
   use crate::continuation::Resumable;
 
   #[test]
