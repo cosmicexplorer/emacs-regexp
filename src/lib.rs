@@ -52,7 +52,10 @@ pub struct ComponentOffset(pub ComponentLen);
 
 impl ComponentOffset {
   #[inline(always)]
-  pub fn as_size(self) -> usize { self.0 as usize }
+  pub const fn zero() -> Self { Self(0) }
+
+  #[inline(always)]
+  pub const fn as_size(self) -> usize { self.0 as usize }
 
   #[inline(always)]
   pub fn try_from_size(x: usize) -> Option<Self> {

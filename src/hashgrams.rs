@@ -89,17 +89,18 @@ impl HashWindow {
   pub fn get_hash(&self) -> Hash { self.hash }
 
   #[inline]
-  pub fn initialize_window_at_border<const N: ComponentLen>(
+  pub fn initialize_window_at_border(
     &mut self,
     entire_input: &[HashToken],
     direction: WindowDirection,
+    window_len: ComponentLen,
   ) -> ComponentOffset {
     assert!(
-      N as usize <= entire_input.len(),
+      (window_len as usize) <= entire_input.len(),
       "TODO: hash window must be no larger than input length!"
     );
-    let mut offset = ComponentOffset(0);
-    assert_ne!(N, 0, "empty hash window not supported!");
+    let mut offset = ComponentOffset::zero();
+    assert_ne!(window_len, 0, "empty hash window not supported!");
     let (first, rest) = match direction {
       WindowDirection::Left => entire_input.split_first().unwrap(),
       WindowDirection::Right => entire_input.split_last().unwrap(),
@@ -110,7 +111,7 @@ impl HashWindow {
     }
     match direction {
       WindowDirection::Left => {
-        for b in rest.iter().copied().take((N as usize) - 1) {
+        for b in rest.iter().copied().take((window_len as usize) - 1) {
           self.add_next_to_window(b);
           unsafe {
             offset.unchecked_increment();
@@ -118,7 +119,7 @@ impl HashWindow {
         }
       },
       WindowDirection::Right => {
-        for b in rest.iter().rev().copied().take((N as usize) - 1) {
+        for b in rest.iter().rev().copied().take((window_len as usize) - 1) {
           self.add_next_to_window(b);
           unsafe {
             offset.unchecked_increment();
@@ -126,18 +127,20 @@ impl HashWindow {
         }
       },
     };
+    debug_assert_eq!(offset.as_size(), window_len as usize);
     offset
   }
 }
 
 /* TODO: consider vectorized version! see e.g. https://github.com/ashvardanian/StringZilla/blob/bc1869a85293ff5aa6e5075475263002c43648eb/include/stringzilla/stringzilla.h#L3682-L3805 */
-pub struct HashWindowIt<'h, const N: ComponentLen> {
+pub struct HashWindowIt<'h> {
   input: &'h [HashToken],
   offset: Option<ComponentOffset>,
   direction: WindowDirection,
   window: HashWindow,
+  window_len: Option<ComponentLen>,
 }
-impl<'h, const N: ComponentLen> HashWindowIt<'h, N> {
+impl<'h> HashWindowIt<'h> {
   #[inline(always)]
   pub fn empty_window(input: &'h [HashToken], direction: WindowDirection) -> Self {
     assert!(
@@ -149,6 +152,7 @@ impl<'h, const N: ComponentLen> HashWindowIt<'h, N> {
       offset: None,
       direction,
       window: HashWindow::new(),
+      window_len: None,
     }
   }
 
@@ -159,24 +163,30 @@ impl<'h, const N: ComponentLen> HashWindowIt<'h, N> {
   }
 
   #[inline(always)]
+  pub fn window_len(&self) -> ComponentLen { self.window_len.unwrap() }
+
+  #[inline(always)]
   pub fn remaining(&self) -> ComponentLen {
     let offset = match self.offset {
       None => return 0,
       Some(ComponentOffset(offset)) => offset,
     };
-    self.input_len() - offset
+    /* +1 because we will generate exactly one window at the end (e.g. when a
+     * window covers the entire input). */
+    self.input_len() - offset + 1
   }
 
   #[inline]
-  pub fn initialize_window(&mut self) {
-    self.offset = Some(
-      self
-        .window
-        .initialize_window_at_border::<N>(self.input, self.direction),
-    );
+  pub fn initialize_window(&mut self, window_len: ComponentLen) {
+    self.window_len = Some(window_len);
+    self.offset = Some(self.window.initialize_window_at_border(
+      self.input,
+      self.direction,
+      window_len,
+    ));
   }
 }
-impl<'h, const N: ComponentLen> Iterator for HashWindowIt<'h, N> {
+impl<'h> Iterator for HashWindowIt<'h> {
   type Item = Hash;
 
   fn next(&mut self) -> Option<Self::Item> {
@@ -187,16 +197,16 @@ impl<'h, const N: ComponentLen> Iterator for HashWindowIt<'h, N> {
     if offset.as_size() == self.input.len() {
       self.offset = None;
     } else {
-      debug_assert!(offset.as_size() >= N as usize);
-      debug_assert!(offset.as_size() < self.input.len());
+      debug_assert!(offset.as_size() >= (self.window_len() as usize));
+      debug_assert!(offset.0 < self.input_len());
       let (next_char, drop_char) = match self.direction {
         WindowDirection::Left => (
           self.input[offset.as_size()],
-          self.input[offset.as_size() - (N as usize)],
+          self.input[offset.as_size() - (self.window_len() as usize)],
         ),
         WindowDirection::Right => (
           self.input[self.input.len() - offset.as_size() - 1],
-          self.input[self.input.len() - offset.as_size() + (N as usize) - 1],
+          self.input[self.input.len() - offset.as_size() + (self.window_len() as usize) - 1],
         ),
       };
       self.window.roll(drop_char, next_char);
@@ -217,8 +227,8 @@ impl<'h, const N: ComponentLen> Iterator for HashWindowIt<'h, N> {
     (remaining, Some(remaining))
   }
 }
-impl<'h, const N: ComponentLen> ExactSizeIterator for HashWindowIt<'h, N> {}
-unsafe impl<'h, const N: ComponentLen> iter::TrustedLen for HashWindowIt<'h, N> {}
+impl<'h> ExactSizeIterator for HashWindowIt<'h> {}
+unsafe impl<'h> iter::TrustedLen for HashWindowIt<'h> {}
 
 #[cfg(test)]
 mod test {
@@ -229,14 +239,14 @@ mod test {
     let s = b"asdf";
     let s: &[u8] = s.as_ref();
 
-    let mut it = HashWindowIt::<2>::empty_window(s, WindowDirection::Left);
-    it.initialize_window();
+    let mut it = HashWindowIt::empty_window(s, WindowDirection::Left);
+    it.initialize_window(2);
 
     let hashes: Vec<_> = it.collect();
     assert_eq!(hashes, vec![Hash(309), Hash(330), Hash(302)]);
 
-    let mut it_r = HashWindowIt::<2>::empty_window(s, WindowDirection::Right);
-    it_r.initialize_window();
+    let mut it_r = HashWindowIt::empty_window(s, WindowDirection::Right);
+    it_r.initialize_window(2);
 
     let hashes: Vec<_> = it_r.collect();
     assert_eq!(hashes, vec![Hash(304), Hash(315), Hash(327)]);
@@ -244,14 +254,14 @@ mod test {
     let s_r = b"fdsa";
     let s_r: &[u8] = s_r.as_ref();
 
-    let mut it_2r = HashWindowIt::<2>::empty_window(s_r, WindowDirection::Left);
-    it_2r.initialize_window();
+    let mut it_2r = HashWindowIt::empty_window(s_r, WindowDirection::Left);
+    it_2r.initialize_window(2);
 
     let hashes: Vec<_> = it_2r.collect();
     assert_eq!(hashes, vec![Hash(304), Hash(315), Hash(327)]);
 
-    let mut it_r2r = HashWindowIt::<2>::empty_window(s_r, WindowDirection::Right);
-    it_r2r.initialize_window();
+    let mut it_r2r = HashWindowIt::empty_window(s_r, WindowDirection::Right);
+    it_r2r.initialize_window(2);
 
     let hashes: Vec<_> = it_r2r.collect();
     assert_eq!(hashes, vec![Hash(309), Hash(330), Hash(302)]);
@@ -262,14 +272,14 @@ mod test {
     let s = b"asdf";
     let s: &[u8] = s.as_ref();
 
-    let mut it = HashWindowIt::<4>::empty_window(s, WindowDirection::Left);
-    it.initialize_window();
+    let mut it = HashWindowIt::empty_window(s, WindowDirection::Left);
+    it.initialize_window(4);
 
     let hashes: Vec<_> = it.collect();
     assert_eq!(hashes, vec![Hash(1538)]);
 
-    let mut it_r = HashWindowIt::<4>::empty_window(s, WindowDirection::Right);
-    it_r.initialize_window();
+    let mut it_r = HashWindowIt::empty_window(s, WindowDirection::Right);
+    it_r.initialize_window(4);
 
     let hashes: Vec<_> = it_r.collect();
     assert_eq!(hashes, vec![Hash(1543)]);
@@ -277,14 +287,14 @@ mod test {
     let s_r = b"fdsa";
     let s_r: &[u8] = s_r.as_ref();
 
-    let mut it_2r = HashWindowIt::<4>::empty_window(s_r, WindowDirection::Left);
-    it_2r.initialize_window();
+    let mut it_2r = HashWindowIt::empty_window(s_r, WindowDirection::Left);
+    it_2r.initialize_window(4);
 
     let hashes: Vec<_> = it_2r.collect();
     assert_eq!(hashes, vec![Hash(1543)]);
 
-    let mut it_r2r = HashWindowIt::<4>::empty_window(s_r, WindowDirection::Right);
-    it_r2r.initialize_window();
+    let mut it_r2r = HashWindowIt::empty_window(s_r, WindowDirection::Right);
+    it_r2r.initialize_window(4);
 
     let hashes: Vec<_> = it_r2r.collect();
     assert_eq!(hashes, vec![Hash(1538)]);
