@@ -251,4 +251,37 @@ mod test {
     let hashes: Vec<_> = it_r2r.collect();
     assert_eq!(hashes, vec![Hash(309), Hash(330), Hash(302)]);
   }
+
+  #[test]
+  fn single_hash_window() {
+    let s = b"asdf";
+    let s: &[u8] = s.as_ref();
+
+    let mut it = HashWindowIt::<4>::empty_window(s, WindowDirection::Left);
+    it.initialize_window();
+
+    let hashes: Vec<_> = it.collect();
+    assert_eq!(hashes, vec![Hash(1538)]);
+
+    let mut it_r = HashWindowIt::<4>::empty_window(s, WindowDirection::Right);
+    it_r.initialize_window();
+
+    let hashes: Vec<_> = it_r.collect();
+    assert_eq!(hashes, vec![Hash(1543)]);
+
+    let s_r = b"fdsa";
+    let s_r: &[u8] = s_r.as_ref();
+
+    let mut it_2r = HashWindowIt::<4>::empty_window(s_r, WindowDirection::Left);
+    it_2r.initialize_window();
+
+    let hashes: Vec<_> = it_2r.collect();
+    assert_eq!(hashes, vec![Hash(1543)]);
+
+    let mut it_r2r = HashWindowIt::<4>::empty_window(s_r, WindowDirection::Right);
+    it_r2r.initialize_window();
+
+    let hashes: Vec<_> = it_r2r.collect();
+    assert_eq!(hashes, vec![Hash(1538)]);
+  }
 }
