@@ -52,6 +52,13 @@ impl ComponentOffset {
     let x: Result<ComponentLen, _> = x.try_into();
     Some(Self(x.ok()?))
   }
+
+  pub fn checked_increment(&mut self) {
+    self.0 = self
+      .0
+      .checked_add(1)
+      .expect("incremented past component length!");
+  }
 }
 
 type GlobalLen = u64;

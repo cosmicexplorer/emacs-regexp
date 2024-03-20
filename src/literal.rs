@@ -297,6 +297,7 @@ where
     let node = self.trie.get_node_by_index(state).unwrap();
     LeftAnchoredMultipleLiteralsMatcher {
       automaton: self,
+      cont: c,
       node,
     }
   }
@@ -310,14 +311,28 @@ where
   type O = LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>;
 }
 
+enum LeftPrefixNodeState<'t, 'n, A>
+where A: Allocator
+{
+  JustANode(
+    &'t trie::Node<u8, &'n [u8], A>,
+    LeftPrefixContinuation,
+    ComponentOffset,
+  ),
+  NodeMinusEndState(
+    &'t trie::Node<u8, &'n [u8], A>,
+    LeftPrefixContinuation,
+    ComponentOffset,
+  ),
+  Empty,
+}
+
 struct LeftPrefixIt<'t, 'n, 'h, A>
 where A: Allocator
 {
   automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
   input: &'h [u8],
-  /* TODO: make these two an enum! */
-  start_node: Option<&'t trie::Node<u8, &'n [u8], A>>,
-  end_continuation: Option<LeftPrefixContinuation>,
+  node_state: LeftPrefixNodeState<'t, 'n, A>,
 }
 impl<'t, 'n, 'h, A> LeftPrefixIt<'t, 'n, 'h, A>
 where A: Allocator
@@ -325,13 +340,13 @@ where A: Allocator
   pub fn from_automaton_and_input_and_start_node(
     automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
     input: &'h [u8],
+    cont: LeftPrefixContinuation,
     start_node: &'t trie::Node<u8, &'n [u8], A>,
   ) -> Self {
     Self {
       automaton,
       input,
-      start_node: Some(start_node),
-      end_continuation: None,
+      node_state: LeftPrefixNodeState::JustANode(start_node, cont, ComponentOffset(0)),
     }
   }
 }
@@ -343,41 +358,51 @@ where
   type Item = LeftAnchoredMatchResult<&'n [u8], LeftPrefixContinuation>;
 
   fn next(&mut self) -> Option<Self::Item> {
-    if let Some(end_continuation) = self.end_continuation.take() {
-      return Some(LeftAnchoredMatchResult::PartialMatch(end_continuation));
-    }
+    let (mut cur_trie_node, mut cont, mut offset) =
+      /* Replace the state with empty upon each iteration. */
+      match mem::replace(&mut self.node_state, LeftPrefixNodeState::Empty) {
+        LeftPrefixNodeState::Empty => return None,
+        LeftPrefixNodeState::JustANode(node, cont, offset) => {
+          if let Some(id) = node.end() {
+            self.node_state = LeftPrefixNodeState::NodeMinusEndState(node, cont, offset);
+            return Some(LeftAnchoredMatchResult::CompleteMatch(id, offset));
+          }
+          (node, cont, offset)
+        },
+        LeftPrefixNodeState::NodeMinusEndState(node, cont, offset) => (node, cont, offset),
+      };
 
-    let mut cur_trie_node = self.start_node?;
-
-    assert!(!self.input.is_empty());
-
-    for token in self.input.iter() {
+    let remaining_input = &self.input[offset.as_size()..];
+    for token in remaining_input.iter() {
       match cur_trie_node.challenge(*token) {
-        /* Prefix match failed! */
+        /* Prefix match failed! We are TOTALLY done with iteration! */
         None => return None,
         /* Succeeded! Let's continue. */
         Some(next_index) => {
-          let next_index = LeftPrefixContinuation { state: next_index };
-          self.end_continuation = Some(next_index);
+          offset.checked_increment();
+          cont = LeftPrefixContinuation { state: next_index };
+
           let LeftAnchoredMultipleLiteralsMatcher {
             node: next_node, ..
-          } = self.automaton.index(next_index).into();
+          } = self.automaton.index(cont).into();
+
+          if let Some(id) = next_node.end() {
+            self.node_state = LeftPrefixNodeState::NodeMinusEndState(next_node, cont, offset);
+            return Some(LeftAnchoredMatchResult::CompleteMatch(id, offset));
+          }
+
           cur_trie_node = next_node;
         },
       }
     }
 
-    return Some(if let Some(id) = cur_trie_node.end() {
-      LeftAnchoredMatchResult::CompleteMatch(
-        id,
-        ComponentOffset::try_from_size(self.input.len())
-          .expect("input component should fit within u32"),
-      )
-    } else {
-      LeftAnchoredMatchResult::PartialMatch(self.end_continuation.take().expect(
-        "self.end_continuation should have been set above since input was asserted nonempty",
-      ))
-    });
+    /* If we can't possibly consume any more input, then exit here without
+     * producing any continuation. */
+    if cur_trie_node.is_branchless() {
+      return None;
+    }
+
+    Some(LeftAnchoredMatchResult::PartialMatch(cont))
   }
 }
 
@@ -386,6 +411,7 @@ pub struct LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>
 where A: Allocator
 {
   automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
+  cont: LeftPrefixContinuation,
   node: &'t trie::Node<u8, &'n [u8], A>,
 }
 impl<'t, 'n, A> LeftAnchoredMatcher<'n> for LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>
@@ -408,7 +434,7 @@ where A: Allocator
     'h: 'n,
   {
     assert!(!i.is_empty());
-    LeftPrefixIt::from_automaton_and_input_and_start_node(self.automaton, i, self.node)
+    LeftPrefixIt::from_automaton_and_input_and_start_node(self.automaton, i, self.cont, self.node)
   }
 }
 
@@ -793,8 +819,6 @@ mod test {
       RightAnchoredMatchResult::CompleteMatch((), ComponentOffset(3))
     ]);
     assert_eq!(rm.invoke(&mut (), &s_wrong).count(), 0);
-
-    /* TODO: multiple matches! */
   }
 
   #[test]
@@ -825,7 +849,6 @@ mod test {
 
     let mut x = ();
     let matches: Vec<_> = lm.invoke(&mut x, &t1).collect();
-    dbg!(&matches);
     assert_eq!(matches.len(), 1);
     match matches[0] {
       LeftAnchoredMatchResult::CompleteMatch(t, o) => {
@@ -847,9 +870,21 @@ mod test {
 
     assert_eq!(lm.invoke(&mut x, &t3).collect::<Vec<_>>(), vec![
       LeftAnchoredMatchResult::PartialMatch(LeftPrefixContinuation {
-        state: trie::NodeIndex(3)
+        state: trie::NodeIndex(6)
       })
     ]);
+    let lm2 = la
+      .index(LeftPrefixContinuation {
+        state: trie::NodeIndex(6),
+      })
+      .into();
+    assert_eq!(lm2.invoke(&mut x, b"f").collect::<Vec<_>>(), vec![
+      LeftAnchoredMatchResult::CompleteMatch(s1, ComponentOffset(1))
+    ]);
+
+    assert_eq!(lm.invoke(&mut x, &t_wrong).count(), 0);
+
+    /* TODO: right prefix!! */
   }
 
   /* #[test] */

@@ -68,7 +68,9 @@ where A: Allocator
     Self::new_in(A::default())
   }
 
-  pub fn is_empty(&self) -> bool { self.end.is_none() && self.branches.is_empty() }
+  pub fn is_empty(&self) -> bool { self.end.is_none() && self.is_branchless() }
+
+  pub fn is_branchless(&self) -> bool { self.branches.is_empty() }
 
   pub fn challenge(&self, key: K) -> Option<NodeIndex>
   where K: Hash+Eq {
@@ -98,7 +100,6 @@ where A: Allocator+Clone
 
     while let Some((NodeIndex(cur_node), lits)) = todo.pop() {
       debug_assert!(nodes.get(cur_node).unwrap().is_empty());
-      let mut end: Option<&'n [u8]> = None;
 
       let mut branches: HashMap<u8, Vec<(&'n [u8], &'n [u8]), A>, BuildHasherDefault<FxHasher>, A> =
         HashMap::with_hasher_in(BuildHasherDefault::<FxHasher>::default(), alloc.clone());
@@ -106,7 +107,9 @@ where A: Allocator+Clone
       for (src, rest) in lits.into_iter() {
         match rest.split_first() {
           None => {
-            end = Some(src);
+            let cur_node = nodes.get_mut(cur_node).unwrap();
+            debug_assert!(cur_node.end.is_none());
+            cur_node.end = Some(src);
           },
           Some((first, rest)) => {
             branches
