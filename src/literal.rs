@@ -1,4 +1,4 @@
-/* Description: ???
+/* Description: Literal matchers.
 
 Copyright (C) 2024 Danny McClanahan <dmcC2@hypnicjerk.ai>
 SPDX-License-Identifier: GPL-3.0-or-later
@@ -15,6 +15,8 @@ GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
+
+//! Literal matchers.
 
 use core::{alloc::Allocator, hash::BuildHasherDefault, mem};
 
@@ -703,8 +705,20 @@ pub mod unanchored {
     left_anchored::LeftSingleLiteralContinuation, right_anchored::RightSingleLiteralContinuation, *,
   };
 
-  /* #[derive(Debug, Clone)] */
-  /* pub struct UnanchoredSingleLiteralAutomaton<'n> {} */
+  /* #[derive(Debug, Copy, Clone)] */
+  /* pub struct UnanchoredSingleLiteralAutomaton<'n> { */
+  /*   lit: &'n [u8], */
+  /* } */
+  /* impl<'n> UnanchoredSingleLiteralAutomaton<'n> { */
+  /*   pub fn new(lit: &'n [u8]) -> Self { Self { lit } } */
+  /* } */
+  /* impl<'n> continuation::Resumable<'n, UnanchoredSingleLiteralMatcher<'n>> */
+  /*   for UnanchoredSingleLiteralAutomaton<'n> */
+  /* { */
+  /*   type C = ??? */
+  /* } */
+
+
 }
 
 #[cfg(test)]

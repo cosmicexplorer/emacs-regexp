@@ -1,4 +1,4 @@
-/* Description: ???
+/* Description: Implementation of emacs regex matching!
 
 Copyright (C) 2024 Danny McClanahan <dmcC2@hypnicjerk.ai>
 SPDX-License-Identifier: GPL-3.0-or-later
@@ -16,12 +16,15 @@ GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
+//! Implementation of emacs regex matching!
+
 #![warn(rustdoc::missing_crate_level_docs)]
 // #![warn(missing_docs)]
 /* Ensure any doctest warnings fails the doctest! */
 #![doc(test(attr(deny(warnings))))]
 #![feature(trait_alias)]
 #![feature(allocator_api)]
+#![feature(unchecked_math)]
 
 pub mod hashgrams;
 pub mod literal;
@@ -47,13 +50,19 @@ type ComponentLen = u32;
 pub struct ComponentOffset(pub ComponentLen);
 
 impl ComponentOffset {
+  #[inline(always)]
   pub fn as_size(self) -> usize { self.0 as usize }
 
+  #[inline(always)]
   pub fn try_from_size(x: usize) -> Option<Self> {
     let x: Result<ComponentLen, _> = x.try_into();
     Some(Self(x.ok()?))
   }
 
+  #[inline(always)]
+  pub unsafe fn unchecked_increment(&mut self) { self.0 = self.0.unchecked_add(1); }
+
+  #[inline(always)]
   pub fn checked_increment(&mut self) {
     self.0 = self
       .0

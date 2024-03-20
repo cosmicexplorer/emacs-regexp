@@ -1,4 +1,4 @@
-/* Description: ???
+/* Description: Trie implementation.
 
 Copyright (C) 2024 Danny McClanahan <dmcC2@hypnicjerk.ai>
 SPDX-License-Identifier: GPL-3.0-or-later
@@ -15,6 +15,8 @@ GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
+
+//! Trie implementation.
 
 use core::{
   alloc::Allocator,
