@@ -26,49 +26,27 @@ type HashToken = u8;
 type HashLen = u64;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Hash(pub HashLen);
+pub struct Hash(pub(crate) HashLen);
 
 impl Hash {
   #[inline(always)]
-  pub const fn new() -> Self { Self(0) }
+  pub(crate) const fn new() -> Self { Self(0) }
 
   #[inline(always)]
-  pub fn add(&mut self, byte: HashToken) {
+  pub(crate) fn add(&mut self, byte: HashToken) {
     self.0 = self.0.wrapping_shl(1).wrapping_add(u64::from(byte));
   }
 
   #[inline(always)]
-  pub fn del(&mut self, factor: HashLen, byte: HashToken) {
+  pub(crate) fn del(&mut self, factor: HashLen, byte: HashToken) {
     self.0 = self.0.wrapping_sub(u64::from(byte).wrapping_mul(factor));
   }
 
   #[inline(always)]
-  pub fn roll(&mut self, factor: HashLen, old: HashToken, new: HashToken) {
+  pub(crate) fn roll(&mut self, factor: HashLen, old: HashToken, new: HashToken) {
     self.del(factor, old);
     self.add(new);
   }
-
-  /* #[inline(always)] */
-  /* pub unsafe fn forward(mut start: *const HashToken, end: *const HashToken)
-   * -> Self { */
-  /* let mut hash = Self::new(); */
-  /* while start < end { */
-  /* hash.add(start.read()); */
-  /* start = start.add(1); */
-  /* } */
-  /* hash */
-  /* } */
-
-  /* #[inline(always)] */
-  /* pub unsafe fn reverse(start: *const HashToken, mut end: *const HashToken)
-   * -> Self { */
-  /* let mut hash = Self::new(); */
-  /* while start < end { */
-  /* end = end.sub(1); */
-  /* hash.add(end.read()); */
-  /* } */
-  /* hash */
-  /* } */
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -78,7 +56,7 @@ pub enum WindowDirection {
 }
 
 #[derive(Debug, Clone)]
-pub struct HashWindow {
+struct HashWindow {
   hash: Hash,
   hash_2pow: HashLen,
 }
@@ -103,8 +81,7 @@ impl HashWindow {
 
   #[inline(always)]
   pub fn roll(&mut self, old: HashToken, new: HashToken) {
-    self.hash.del(self.hash_2pow, old);
-    self.hash.add(new);
+    self.hash.roll(self.hash_2pow, old, new);
   }
 
   #[inline(always)]

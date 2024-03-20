@@ -20,7 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{
   alloc::Allocator,
-  hash::{BuildHasher, BuildHasherDefault, Hash},
+  hash::{BuildHasherDefault, Hash},
 };
 
 use hashbrown::HashMap;

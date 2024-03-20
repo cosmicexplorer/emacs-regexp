@@ -18,22 +18,19 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Literal matchers.
 
-use core::{alloc::Allocator, hash::BuildHasherDefault, mem};
+use core::{alloc::Allocator, mem};
 
 use hashbrown::HashTable;
-use memchr::memmem;
-use rustc_hash::FxHasher;
 use xxhash_rust::xxh3::xxh3_64;
 
 use crate::{
   continuation::{self, Resumable as _},
-  state, trie, ComponentOffset, DoublyAnchoredMatcher, IntraComponentInterval,
-  LeftAnchoredAutomaton, LeftAnchoredMatchResult, LeftAnchoredMatcher, RightAnchoredAutomaton,
-  RightAnchoredMatchResult, RightAnchoredMatcher, UnanchoredMatchResult, UnanchoredMatcher,
+  trie, ComponentOffset,
 };
 
 pub mod doubly_anchored {
   use super::*;
+  use crate::DoublyAnchoredMatcher;
 
   pub struct DoublyAnchoredSingleLiteral<'n> {
     lit: &'n [u8],
@@ -175,6 +172,7 @@ where A: Allocator
 
 pub mod left_anchored {
   use super::*;
+  use crate::{LeftAnchoredAutomaton, LeftAnchoredMatchResult, LeftAnchoredMatcher};
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub struct LeftSingleLiteralContinuation {
@@ -436,6 +434,7 @@ pub mod left_anchored {
 
 pub mod right_anchored {
   use super::*;
+  use crate::{RightAnchoredAutomaton, RightAnchoredMatchResult, RightAnchoredMatcher};
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub struct RightSingleLiteralContinuation {
@@ -704,21 +703,20 @@ pub mod unanchored {
   use super::{
     left_anchored::LeftSingleLiteralContinuation, right_anchored::RightSingleLiteralContinuation, *,
   };
+  use crate::{IntraComponentInterval, UnanchoredMatchResult, UnanchoredMatcher};
 
   /* #[derive(Debug, Copy, Clone)] */
   /* pub struct UnanchoredSingleLiteralAutomaton<'n> { */
-  /*   lit: &'n [u8], */
+  /* lit: &'n [u8], */
   /* } */
   /* impl<'n> UnanchoredSingleLiteralAutomaton<'n> { */
-  /*   pub fn new(lit: &'n [u8]) -> Self { Self { lit } } */
+  /* pub fn new(lit: &'n [u8]) -> Self { Self { lit } } */
   /* } */
   /* impl<'n> continuation::Resumable<'n, UnanchoredSingleLiteralMatcher<'n>> */
-  /*   for UnanchoredSingleLiteralAutomaton<'n> */
+  /* for UnanchoredSingleLiteralAutomaton<'n> */
   /* { */
-  /*   type C = ??? */
+  /* type C = ??? */
   /* } */
-
-
 }
 
 #[cfg(test)]
@@ -726,7 +724,7 @@ mod test {
   use std::alloc::System;
 
   use super::{doubly_anchored::*, left_anchored::*, right_anchored::*, *};
-  use crate::continuation::Resumable;
+  use crate::{continuation::Resumable, *};
 
   #[test]
   fn doubly_anchored_match() {
