@@ -262,7 +262,7 @@ where A: Allocator+Clone
 {
   pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
     Self {
-      trie: trie::PrefixTrie::traverse_in(lits, alloc),
+      trie: trie::PrefixTrie::traverse_in(lits, trie::PrefixDirection::Left, alloc),
     }
   }
 
@@ -311,19 +311,11 @@ where
   type O = LeftAnchoredMultipleLiteralsMatcher<'t, 'n, A>;
 }
 
-enum LeftPrefixNodeState<'t, 'n, A>
+enum PrefixNodeState<'t, 'n, C, A>
 where A: Allocator
 {
-  JustANode(
-    &'t trie::Node<u8, &'n [u8], A>,
-    LeftPrefixContinuation,
-    ComponentOffset,
-  ),
-  NodeMinusEndState(
-    &'t trie::Node<u8, &'n [u8], A>,
-    LeftPrefixContinuation,
-    ComponentOffset,
-  ),
+  JustANode(&'t trie::Node<u8, &'n [u8], A>, C, ComponentOffset),
+  NodeMinusEndState(&'t trie::Node<u8, &'n [u8], A>, C, ComponentOffset),
   Empty,
 }
 
@@ -332,7 +324,7 @@ where A: Allocator
 {
   automaton: &'t LeftAnchoredMultipleLiteralsAutomaton<'n, A>,
   input: &'h [u8],
-  node_state: LeftPrefixNodeState<'t, 'n, A>,
+  node_state: PrefixNodeState<'t, 'n, LeftPrefixContinuation, A>,
 }
 impl<'t, 'n, 'h, A> LeftPrefixIt<'t, 'n, 'h, A>
 where A: Allocator
@@ -348,7 +340,7 @@ where A: Allocator
       input,
       /* Empty literals are not allowed, so we discount any possible end state from any start
        * state. This avoids double-counting end states. */
-      node_state: LeftPrefixNodeState::NodeMinusEndState(start_node, cont, ComponentOffset(0)),
+      node_state: PrefixNodeState::NodeMinusEndState(start_node, cont, ComponentOffset(0)),
     }
   }
 }
@@ -362,16 +354,16 @@ where
   fn next(&mut self) -> Option<Self::Item> {
     let (mut cur_trie_node, mut cont, mut offset) =
       /* Replace the state with empty upon each iteration. */
-      match mem::replace(&mut self.node_state, LeftPrefixNodeState::Empty) {
-        LeftPrefixNodeState::Empty => return None,
-        LeftPrefixNodeState::JustANode(node, cont, offset) => {
+      match mem::replace(&mut self.node_state, PrefixNodeState::Empty) {
+        PrefixNodeState::Empty => return None,
+        PrefixNodeState::JustANode(node, cont, offset) => {
           if let Some(id) = node.end() {
-            self.node_state = LeftPrefixNodeState::NodeMinusEndState(node, cont, offset);
+            self.node_state = PrefixNodeState::NodeMinusEndState(node, cont, offset);
             return Some(LeftAnchoredMatchResult::CompleteMatch(id, offset));
           }
           (node, cont, offset)
         },
-        LeftPrefixNodeState::NodeMinusEndState(node, cont, offset) => (node, cont, offset),
+        PrefixNodeState::NodeMinusEndState(node, cont, offset) => (node, cont, offset),
       };
 
     let remaining_input = &self.input[offset.as_size()..];
@@ -389,7 +381,7 @@ where
           } = self.automaton.index(cont).into();
 
           if let Some(id) = next_node.end() {
-            self.node_state = LeftPrefixNodeState::NodeMinusEndState(next_node, cont, offset);
+            self.node_state = PrefixNodeState::NodeMinusEndState(next_node, cont, offset);
             return Some(LeftAnchoredMatchResult::CompleteMatch(id, offset));
           }
 
@@ -520,6 +512,187 @@ impl<'n> RightAnchoredMatcher<'n> for RightAnchoredSingleLiteralMatcher<'n> {
       }
     }
     .into_iter()
+  }
+}
+
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RightPrefixContinuation {
+  pub state: trie::NodeIndex,
+}
+impl continuation::Continuation for RightPrefixContinuation {}
+
+
+#[derive(Debug, Clone)]
+pub struct RightAnchoredMultipleLiteralsAutomaton<'n, A>
+where A: Allocator
+{
+  trie: trie::PrefixTrie<'n, A>,
+}
+impl<'n, A> RightAnchoredMultipleLiteralsAutomaton<'n, A>
+where A: Allocator+Clone
+{
+  pub fn new_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
+    Self {
+      trie: trie::PrefixTrie::traverse_in(lits, trie::PrefixDirection::Right, alloc),
+    }
+  }
+
+  pub fn new(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
+  where A: Default {
+    Self::new_in(lits, A::default())
+  }
+}
+impl<'t, 'n, A> continuation::Resumable<'t, RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>>
+  for RightAnchoredMultipleLiteralsAutomaton<'n, A>
+where
+  A: Allocator,
+  't: 'n,
+  'n: 't,
+{
+  type C = RightPrefixContinuation;
+
+  fn top(&self) -> Self::C {
+    RightPrefixContinuation {
+      state: trie::PrefixTrie::<A>::get_top_node(),
+    }
+  }
+
+  fn index<'s>(
+    &'s self,
+    c: Self::C,
+  ) -> impl Into<RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>>+'s
+  where
+    's: 't,
+  {
+    let RightPrefixContinuation { state } = c;
+    let node = self.trie.get_node_by_index(state).unwrap();
+    RightAnchoredMultipleLiteralsMatcher {
+      automaton: self,
+      cont: c,
+      node,
+    }
+  }
+}
+impl<'t, 'n, A> RightAnchoredAutomaton<'t> for RightAnchoredMultipleLiteralsAutomaton<'n, A>
+where
+  A: Allocator+'t,
+  't: 'n,
+  'n: 't,
+{
+  type O = RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>;
+}
+
+struct RightPrefixIt<'t, 'n, 'h, A>
+where A: Allocator
+{
+  automaton: &'t RightAnchoredMultipleLiteralsAutomaton<'n, A>,
+  input: &'h [u8],
+  node_state: PrefixNodeState<'t, 'n, RightPrefixContinuation, A>,
+}
+impl<'t, 'n, 'h, A> RightPrefixIt<'t, 'n, 'h, A>
+where A: Allocator
+{
+  pub fn from_automaton_and_input_and_start_node(
+    automaton: &'t RightAnchoredMultipleLiteralsAutomaton<'n, A>,
+    input: &'h [u8],
+    cont: RightPrefixContinuation,
+    start_node: &'t trie::Node<u8, &'n [u8], A>,
+  ) -> Self {
+    Self {
+      automaton,
+      input,
+      /* Empty literals are not allowed, so we discount any possible end state from any start
+       * state. This avoids double-counting end states. */
+      node_state: PrefixNodeState::NodeMinusEndState(start_node, cont, ComponentOffset(0)),
+    }
+  }
+}
+impl<'t, 'n, 'h, A> Iterator for RightPrefixIt<'t, 'n, 'h, A>
+where
+  A: Allocator,
+  't: 'n,
+{
+  type Item = RightAnchoredMatchResult<&'n [u8], RightPrefixContinuation>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    let (mut cur_trie_node, mut cont, mut offset) =
+      /* Replace the state with empty upon each iteration. */
+      match mem::replace(&mut self.node_state, PrefixNodeState::Empty) {
+        PrefixNodeState::Empty => return None,
+        PrefixNodeState::JustANode(node, cont, offset) => {
+          if let Some(id) = node.end() {
+            self.node_state = PrefixNodeState::NodeMinusEndState(node, cont, offset);
+            return Some(RightAnchoredMatchResult::CompleteMatch(id, offset));
+          }
+          (node, cont, offset)
+        },
+        PrefixNodeState::NodeMinusEndState(node, cont, offset) => (node, cont, offset),
+      };
+
+    let remaining_input = &self.input[..(self.input.len() - offset.as_size())];
+    for token in remaining_input.iter().rev() {
+      match cur_trie_node.challenge(*token) {
+        /* Prefix match failed! We are TOTALLY done with iteration! */
+        None => return None,
+        /* Succeeded! Let's continue. */
+        Some(next_index) => {
+          offset.checked_increment();
+          cont = RightPrefixContinuation { state: next_index };
+
+          let RightAnchoredMultipleLiteralsMatcher {
+            node: next_node, ..
+          } = self.automaton.index(cont).into();
+
+          if let Some(id) = next_node.end() {
+            self.node_state = PrefixNodeState::NodeMinusEndState(next_node, cont, offset);
+            return Some(RightAnchoredMatchResult::CompleteMatch(id, offset));
+          }
+
+          cur_trie_node = next_node;
+        },
+      }
+    }
+
+    /* If we can't possibly consume any more input, then exit here without
+     * producing any continuation. */
+    if cur_trie_node.is_branchless() {
+      return None;
+    }
+
+    Some(RightAnchoredMatchResult::PartialMatch(cont))
+  }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>
+where A: Allocator
+{
+  automaton: &'t RightAnchoredMultipleLiteralsAutomaton<'n, A>,
+  cont: RightPrefixContinuation,
+  node: &'t trie::Node<u8, &'n [u8], A>,
+}
+impl<'t, 'n, A> RightAnchoredMatcher<'n> for RightAnchoredMultipleLiteralsMatcher<'t, 'n, A>
+where A: Allocator
+{
+  type I = [u8];
+  type S = &'n [u8];
+  type X = ();
+  type C = RightPrefixContinuation;
+  fn invoke<'s, 'x, 'h>(
+    &'s self,
+    _x: &'x mut Self::X,
+    i: &'h Self::I,
+  ) -> impl Iterator<Item=RightAnchoredMatchResult<Self::S, Self::C>>+'s+'x+'h
+  where
+    'x: 'n,
+    'n: 'x,
+    's: 'n,
+    'n: 'h,
+    'h: 'n,
+  {
+    assert!(!i.is_empty());
+    RightPrefixIt::from_automaton_and_input_and_start_node(self.automaton, i, self.cont, self.node)
   }
 }
 
@@ -833,20 +1006,34 @@ mod test {
     let s3: &[u8] = s3.as_ref();
 
     let la = LeftAnchoredMultipleLiteralsAutomaton::<System>::new([s1, s2, s3]);
+    let ra = RightAnchoredMultipleLiteralsAutomaton::<System>::new([s1, s2, s3]);
+
     let lt = la.top();
     assert_eq!(lt, LeftPrefixContinuation {
       state: trie::NodeIndex(0)
     });
+    let rt = ra.top();
+    assert_eq!(rt, RightPrefixContinuation {
+      state: trie::NodeIndex(0)
+    });
+
     let lm = la.index(lt).into();
+    let rm = ra.index(rt).into();
 
     let t1 = b"asdfee";
     let t1: &[u8] = t1.as_ref();
+    let t1_r = b"eeasdf";
+    let t1_r: &[u8] = t1_r.as_ref();
 
     let t2 = b"ok3";
     let t2: &[u8] = t2.as_ref();
+    let t2_r = b"k34";
+    let t2_r: &[u8] = t2_r.as_ref();
 
     let t3 = b"asd";
     let t3: &[u8] = t3.as_ref();
+    let t3_r = b"sdf";
+    let t3_r: &[u8] = t3_r.as_ref();
 
     let t_wrong = b"g";
     let t_wrong: &[u8] = t_wrong.as_ref();
@@ -855,10 +1042,21 @@ mod test {
     let t2_wrong: &[u8] = t2_wrong.as_ref();
 
     let mut x = ();
+
     let matches: Vec<_> = lm.invoke(&mut x, &t1).collect();
     assert_eq!(matches.len(), 1);
     match matches[0] {
       LeftAnchoredMatchResult::CompleteMatch(t, o) => {
+        assert_eq!(s1.as_ptr(), t.as_ptr());
+        assert_eq!(o, ComponentOffset(4));
+      },
+      _ => unreachable!(),
+    }
+
+    let matches: Vec<_> = rm.invoke(&mut x, &t1_r).collect();
+    assert_eq!(matches.len(), 1);
+    match matches[0] {
+      RightAnchoredMatchResult::CompleteMatch(t, o) => {
         assert_eq!(s1.as_ptr(), t.as_ptr());
         assert_eq!(o, ComponentOffset(4));
       },
@@ -889,6 +1087,33 @@ mod test {
       LeftAnchoredMatchResult::CompleteMatch(s3, ComponentOffset(1))
     ]);
 
+    let matches: Vec<_> = rm.invoke(&mut x, &t2).collect();
+    assert_eq!(matches.len(), 1);
+    match matches[0] {
+      RightAnchoredMatchResult::CompleteMatch(t, o) => {
+        assert_eq!(s2.as_ptr(), t.as_ptr());
+        assert_eq!(o, ComponentOffset(3));
+      },
+      _ => unreachable!(),
+    }
+
+    let matches: Vec<_> = rm.invoke(&mut x, &t2_r).collect();
+    assert_eq!(matches.len(), 1);
+    assert_eq!(
+      matches[0],
+      RightAnchoredMatchResult::PartialMatch(RightPrefixContinuation {
+        state: trie::NodeIndex(10)
+      })
+    );
+    let rm2 = ra
+      .index(RightPrefixContinuation {
+        state: trie::NodeIndex(10),
+      })
+      .into();
+    assert_eq!(rm2.invoke(&mut x, b"o").collect::<Vec<_>>(), vec![
+      RightAnchoredMatchResult::CompleteMatch(s3, ComponentOffset(1))
+    ]);
+
     assert_eq!(lm.invoke(&mut x, &t3).collect::<Vec<_>>(), vec![
       LeftAnchoredMatchResult::PartialMatch(LeftPrefixContinuation {
         state: trie::NodeIndex(7)
@@ -903,10 +1128,24 @@ mod test {
       LeftAnchoredMatchResult::CompleteMatch(s1, ComponentOffset(1))
     ]);
 
+    assert_eq!(rm.invoke(&mut x, &t3_r).collect::<Vec<_>>(), vec![
+      RightAnchoredMatchResult::PartialMatch(RightPrefixContinuation {
+        state: trie::NodeIndex(7)
+      })
+    ]);
+    let rm3 = ra
+      .index(RightPrefixContinuation {
+        state: trie::NodeIndex(7),
+      })
+      .into();
+    assert_eq!(rm3.invoke(&mut x, b"a").collect::<Vec<_>>(), vec![
+      RightAnchoredMatchResult::CompleteMatch(s1, ComponentOffset(1))
+    ]);
+
     assert_eq!(lm.invoke(&mut x, &t_wrong).count(), 0);
     assert_eq!(lm.invoke(&mut x, &t2_wrong).count(), 0);
-
-    /* TODO: right prefix!! */
+    assert_eq!(rm.invoke(&mut x, &t_wrong).count(), 0);
+    assert_eq!(rm.invoke(&mut x, &t2_wrong).count(), 0);
   }
 
   /* #[test] */

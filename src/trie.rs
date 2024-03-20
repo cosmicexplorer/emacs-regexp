@@ -81,10 +81,20 @@ where A: Allocator
   pub fn end(&self) -> Option<&Src> { self.end.as_ref() }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PrefixDirection {
+  Left,
+  Right,
+}
+
 impl<'n, A> PrefixTrie<'n, A>
 where A: Allocator+Clone
 {
-  pub fn traverse_in(lits: impl IntoIterator<Item=&'n [u8]>, alloc: A) -> Self {
+  pub fn traverse_in(
+    lits: impl IntoIterator<Item=&'n [u8]>,
+    direction: PrefixDirection,
+    alloc: A,
+  ) -> Self {
     let mut nodes: Vec<Node<u8, &'n [u8], A>, A> = Vec::with_capacity_in(1, alloc.clone());
     let ret = Node::new_in(alloc.clone());
     nodes.push(ret);
@@ -106,7 +116,11 @@ where A: Allocator+Clone
         HashMap::with_hasher_in(BuildHasherDefault::<FxHasher>::default(), alloc.clone());
 
       for (src, rest) in lits.into_iter() {
-        match rest.split_first() {
+        let split = match direction {
+          PrefixDirection::Left => rest.split_first(),
+          PrefixDirection::Right => rest.split_last(),
+        };
+        match split {
           None => {
             let cur_node = nodes.get_mut(cur_node).unwrap();
             debug_assert!(cur_node.end.is_none());
@@ -139,8 +153,8 @@ where A: Allocator+Clone
     Self { nodes }
   }
 
-  pub fn traverse(lits: impl IntoIterator<Item=&'n [u8]>) -> Self
+  pub fn traverse(lits: impl IntoIterator<Item=&'n [u8]>, direction: PrefixDirection) -> Self
   where A: Default {
-    Self::traverse_in(lits, A::default())
+    Self::traverse_in(lits, direction, A::default())
   }
 }
