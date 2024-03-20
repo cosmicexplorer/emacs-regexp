@@ -23,6 +23,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(trait_alias)]
 #![feature(allocator_api)]
 
+pub mod hashgrams;
 pub mod literal;
 pub mod trie;
 
@@ -178,6 +179,13 @@ pub enum UnanchoredMatchResult<S, LC, RC> {
   PartialLeftOnly(S, LC, ComponentOffset),
   PartialRightOnly(S, RC, ComponentOffset),
   PartialBoth(S, LC, RC),
+}
+
+pub trait UnanchoredAutomaton<'n>:
+  continuation::Resumable<'n, Self::LO>+continuation::Resumable<'n, Self::RO>
+{
+  type LO: LeftAnchoredMatcher<'n, C=<Self as continuation::Resumable<'n, Self::LO>>::C>+'n;
+  type RO: RightAnchoredMatcher<'n, C=<Self as continuation::Resumable<'n, Self::RO>>::C>+'n;
 }
 
 pub trait UnanchoredMatcher<'n> {

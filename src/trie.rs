@@ -18,7 +18,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{
   alloc::Allocator,
-  cell::UnsafeCell,
   hash::{BuildHasher, BuildHasherDefault, Hash},
 };
 

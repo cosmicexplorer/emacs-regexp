@@ -16,7 +16,6 @@ GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
-/* use aho_corasick::AhoCorasick; */
 use core::{alloc::Allocator, hash::BuildHasherDefault, mem};
 
 use hashbrown::HashTable;
@@ -168,7 +167,6 @@ pub mod doubly_anchored {
 enum PrefixNodeState<'t, 'n, C, A>
 where A: Allocator
 {
-  JustANode(&'t trie::Node<u8, &'n [u8], A>, C, ComponentOffset),
   NodeMinusEndState(&'t trie::Node<u8, &'n [u8], A>, C, ComponentOffset),
   Empty,
 }
@@ -364,13 +362,6 @@ pub mod left_anchored {
       /* Replace the state with empty upon each iteration. */
       match mem::replace(&mut self.node_state, PrefixNodeState::Empty) {
         PrefixNodeState::Empty => return None,
-        PrefixNodeState::JustANode(node, cont, offset) => {
-          if let Some(id) = node.end() {
-            self.node_state = PrefixNodeState::NodeMinusEndState(node, cont, offset);
-            return Some(LeftAnchoredMatchResult::CompleteMatch(id, offset));
-          }
-          (node, cont, offset)
-        },
         PrefixNodeState::NodeMinusEndState(node, cont, offset) => (node, cont, offset),
       };
 
@@ -632,13 +623,6 @@ pub mod right_anchored {
       /* Replace the state with empty upon each iteration. */
       match mem::replace(&mut self.node_state, PrefixNodeState::Empty) {
         PrefixNodeState::Empty => return None,
-        PrefixNodeState::JustANode(node, cont, offset) => {
-          if let Some(id) = node.end() {
-            self.node_state = PrefixNodeState::NodeMinusEndState(node, cont, offset);
-            return Some(RightAnchoredMatchResult::CompleteMatch(id, offset));
-          }
-          (node, cont, offset)
-        },
         PrefixNodeState::NodeMinusEndState(node, cont, offset) => (node, cont, offset),
       };
 
@@ -712,6 +696,15 @@ pub mod right_anchored {
       )
     }
   }
+}
+
+pub mod unanchored {
+  use super::{
+    left_anchored::LeftSingleLiteralContinuation, right_anchored::RightSingleLiteralContinuation, *,
+  };
+
+  /* #[derive(Debug, Clone)] */
+  /* pub struct UnanchoredSingleLiteralAutomaton<'n> {} */
 }
 
 #[cfg(test)]
