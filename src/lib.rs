@@ -99,7 +99,7 @@ pub trait DoublyAnchoredMatcher<'n> {
   fn invoke<'s, 'x, 'h>(
     &'s self,
     x: &'x mut Self::X,
-    i: &'h impl AsRef<Self::I>,
+    i: &'h Self::I,
   ) -> impl Iterator<Item=Self::S>+'s+'x+'h
   where
     'x: 'n,
