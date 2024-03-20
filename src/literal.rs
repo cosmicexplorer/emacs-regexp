@@ -346,7 +346,9 @@ where A: Allocator
     Self {
       automaton,
       input,
-      node_state: LeftPrefixNodeState::JustANode(start_node, cont, ComponentOffset(0)),
+      /* Empty literals are not allowed, so we discount any possible end state from any start
+       * state. This avoids double-counting end states. */
+      node_state: LeftPrefixNodeState::NodeMinusEndState(start_node, cont, ComponentOffset(0)),
     }
   }
 }
@@ -827,8 +829,10 @@ mod test {
     let s1: &[u8] = s1.as_ref();
     let s2 = b"ok3";
     let s2: &[u8] = s2.as_ref();
+    let s3 = b"ok34";
+    let s3: &[u8] = s3.as_ref();
 
-    let la = LeftAnchoredMultipleLiteralsAutomaton::<System>::new([s1, s2]);
+    let la = LeftAnchoredMultipleLiteralsAutomaton::<System>::new([s1, s2, s3]);
     let lt = la.top();
     assert_eq!(lt, LeftPrefixContinuation {
       state: trie::NodeIndex(0)
@@ -847,6 +851,9 @@ mod test {
     let t_wrong = b"g";
     let t_wrong: &[u8] = t_wrong.as_ref();
 
+    let t2_wrong = b"asdg";
+    let t2_wrong: &[u8] = t2_wrong.as_ref();
+
     let mut x = ();
     let matches: Vec<_> = lm.invoke(&mut x, &t1).collect();
     assert_eq!(matches.len(), 1);
@@ -859,7 +866,7 @@ mod test {
     }
 
     let matches: Vec<_> = lm.invoke(&mut x, &t2).collect();
-    assert_eq!(matches.len(), 1);
+    assert_eq!(matches.len(), 2);
     match matches[0] {
       LeftAnchoredMatchResult::CompleteMatch(t, o) => {
         assert_eq!(s2.as_ptr(), t.as_ptr());
@@ -867,22 +874,37 @@ mod test {
       },
       _ => unreachable!(),
     }
+    assert_eq!(
+      matches[1],
+      LeftAnchoredMatchResult::PartialMatch(LeftPrefixContinuation {
+        state: trie::NodeIndex(4)
+      })
+    );
+    let lm2 = la
+      .index(LeftPrefixContinuation {
+        state: trie::NodeIndex(4),
+      })
+      .into();
+    assert_eq!(lm2.invoke(&mut x, b"4").collect::<Vec<_>>(), vec![
+      LeftAnchoredMatchResult::CompleteMatch(s3, ComponentOffset(1))
+    ]);
 
     assert_eq!(lm.invoke(&mut x, &t3).collect::<Vec<_>>(), vec![
       LeftAnchoredMatchResult::PartialMatch(LeftPrefixContinuation {
-        state: trie::NodeIndex(6)
+        state: trie::NodeIndex(7)
       })
     ]);
-    let lm2 = la
+    let lm3 = la
       .index(LeftPrefixContinuation {
-        state: trie::NodeIndex(6),
+        state: trie::NodeIndex(7),
       })
       .into();
-    assert_eq!(lm2.invoke(&mut x, b"f").collect::<Vec<_>>(), vec![
+    assert_eq!(lm3.invoke(&mut x, b"f").collect::<Vec<_>>(), vec![
       LeftAnchoredMatchResult::CompleteMatch(s1, ComponentOffset(1))
     ]);
 
     assert_eq!(lm.invoke(&mut x, &t_wrong).count(), 0);
+    assert_eq!(lm.invoke(&mut x, &t2_wrong).count(), 0);
 
     /* TODO: right prefix!! */
   }

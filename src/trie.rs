@@ -91,6 +91,7 @@ where A: Allocator+Clone
 
     let mut lits_vec: Vec<(&'n [u8], &'n [u8]), A> = Vec::new_in(alloc.clone());
     for l in lits.into_iter() {
+      assert!(!l.is_empty(), "empty literals are not allowed!");
       lits_vec.push((l, l));
     }
 
