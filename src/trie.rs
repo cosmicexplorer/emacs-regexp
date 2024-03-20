@@ -27,6 +27,7 @@ use hashbrown::HashMap;
 use rustc_hash::FxHasher;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
 pub struct NodeIndex(pub usize);
 
 #[derive(Debug, Clone)]

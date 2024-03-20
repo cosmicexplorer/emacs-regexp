@@ -25,6 +25,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(trait_alias)]
 #![feature(allocator_api)]
 #![feature(unchecked_math)]
+#![feature(trusted_len)]
 
 pub mod hashgrams;
 pub mod literal;
@@ -58,6 +59,9 @@ impl ComponentOffset {
     let x: Result<ComponentLen, _> = x.try_into();
     Some(Self(x.ok()?))
   }
+
+  #[inline(always)]
+  pub unsafe fn unsafe_from_size(x: usize) -> Self { Self(x as ComponentLen) }
 
   #[inline(always)]
   pub unsafe fn unchecked_increment(&mut self) { self.0 = self.0.unchecked_add(1); }

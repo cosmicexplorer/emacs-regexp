@@ -1,4 +1,4 @@
-/* Description: ???
+/* Description: Rolling window hash iterators.
 
 Copyright (C) 2024 Danny McClanahan <dmcC2@hypnicjerk.ai>
 SPDX-License-Identifier: GPL-3.0-or-later
@@ -16,9 +16,9 @@ GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
-use core::alloc::Allocator;
+//! Rolling window hash iterators.
 
-use hashbrown::HashTable;
+use core::iter;
 
 use crate::{ComponentLen, ComponentOffset};
 
@@ -26,6 +26,7 @@ type HashToken = u8;
 type HashLen = u64;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct Hash(pub(crate) HashLen);
 
 impl Hash {
@@ -138,13 +139,32 @@ pub struct HashWindowIt<'h, const N: ComponentLen> {
 }
 impl<'h, const N: ComponentLen> HashWindowIt<'h, N> {
   #[inline(always)]
-  pub const fn empty_window(input: &'h [HashToken], direction: WindowDirection) -> Self {
+  pub fn empty_window(input: &'h [HashToken], direction: WindowDirection) -> Self {
+    assert!(
+      ComponentOffset::try_from_size(input.len()).is_some(),
+      "input must fit within ComponentLen"
+    );
     Self {
       input,
       offset: None,
       direction,
       window: HashWindow::new(),
     }
+  }
+
+  #[inline(always)]
+  pub fn input_len(&self) -> ComponentLen {
+    let ComponentOffset(len) = unsafe { ComponentOffset::unsafe_from_size(self.input.len()) };
+    len
+  }
+
+  #[inline(always)]
+  pub fn remaining(&self) -> ComponentLen {
+    let offset = match self.offset {
+      None => return 0,
+      Some(ComponentOffset(offset)) => offset,
+    };
+    self.input_len() - offset
   }
 
   #[inline]
@@ -191,7 +211,14 @@ impl<'h, const N: ComponentLen> Iterator for HashWindowIt<'h, N> {
 
     return Some(cur_value);
   }
+
+  fn size_hint(&self) -> (usize, Option<usize>) {
+    let remaining = self.remaining() as usize;
+    (remaining, Some(remaining))
+  }
 }
+impl<'h, const N: ComponentLen> ExactSizeIterator for HashWindowIt<'h, N> {}
+unsafe impl<'h, const N: ComponentLen> iter::TrustedLen for HashWindowIt<'h, N> {}
 
 #[cfg(test)]
 mod test {
