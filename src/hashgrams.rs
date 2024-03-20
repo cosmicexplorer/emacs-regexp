@@ -129,6 +129,7 @@ impl HashWindow {
   }
 }
 
+/* TODO: consider vectorized version! see e.g. https://github.com/ashvardanian/StringZilla/blob/bc1869a85293ff5aa6e5075475263002c43648eb/include/stringzilla/stringzilla.h#L3682-L3805 */
 pub struct HashWindowIt<'h, const N: ComponentLen> {
   input: &'h [HashToken],
   offset: Option<ComponentOffset>,
