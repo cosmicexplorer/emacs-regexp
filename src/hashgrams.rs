@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Rolling window hash iterators.
 
-use core::iter;
+use core::{iter, mem::MaybeUninit};
 
 use crate::{ComponentLen, ComponentOffset};
 
@@ -35,12 +35,12 @@ impl Hash {
 
   #[inline(always)]
   pub(crate) fn add(&mut self, byte: HashToken) {
-    self.0 = self.0.wrapping_shl(1).wrapping_add(u64::from(byte));
+    self.0 = self.0.wrapping_shl(1).wrapping_add(HashLen::from(byte));
   }
 
   #[inline(always)]
   pub(crate) fn del(&mut self, factor: HashLen, byte: HashToken) {
-    self.0 = self.0.wrapping_sub(u64::from(byte).wrapping_mul(factor));
+    self.0 = self.0.wrapping_sub(HashLen::from(byte).wrapping_mul(factor));
   }
 
   #[inline(always)]
@@ -54,6 +54,36 @@ impl Hash {
 pub enum WindowDirection {
   Left,
   Right,
+}
+
+const SIMD_HASH_WINDOW_LENGTH: ComponentLen = 4;
+
+#[derive(Debug, Clone)]
+struct SIMDHashWindow {
+  hashes: [Hash; SIMD_HASH_WINDOW_LENGTH as usize],
+}
+
+impl SIMDHashWindow {
+  #[inline(always)]
+  const fn calculate_div_factor() -> HashLen { 1u64.wrapping_shl(SIMD_HASH_WINDOW_LENGTH - 1) }
+
+  #[inline(always)]
+  pub const fn blank() -> Self {
+    Self {
+      hashes: unsafe { MaybeUninit::zeroed().assume_init() },
+    }
+  }
+
+  #[inline]
+  pub fn initialize(&mut self, window: &[HashToken; SIMD_HASH_WINDOW_LENGTH as usize]) {
+    for i in 0..window.len() {
+      let b = window.get(i).unwrap();
+      for j in 0..=i {
+        let h = self.hashes.get_mut(j).unwrap();
+        h.add(*b);
+      }
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
