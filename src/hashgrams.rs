@@ -30,13 +30,19 @@ pub mod hashing {
   #[repr(transparent)]
   pub struct Hash(pub(crate) HashLen);
 
+  const SHIFT_FACTOR: u32 = 1;
+
   impl Hash {
     #[inline(always)]
     pub(crate) const fn new() -> Self { Self(0) }
 
     #[inline(always)]
     pub(crate) fn add(&mut self, byte: HashToken) {
-      self.0 = self.0.wrapping_shl(1).wrapping_add(HashLen::from(byte));
+      /* 8 + 3 * x (=? 19) > 64 */
+      self.0 = self
+        .0
+        .wrapping_shl(SHIFT_FACTOR)
+        .wrapping_add(HashLen::from(byte));
     }
 
     #[inline(always)]
@@ -116,7 +122,7 @@ pub mod hashing {
     #[inline(always)]
     pub fn add_next_to_window(&mut self, next: HashToken) {
       self.hash.add(next);
-      self.hash_2pow = self.hash_2pow.wrapping_shl(1);
+      self.hash_2pow = self.hash_2pow.wrapping_shl(SHIFT_FACTOR);
     }
 
     #[inline(always)]
