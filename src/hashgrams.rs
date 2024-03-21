@@ -31,36 +31,30 @@ pub mod hashing {
   #[repr(transparent)]
   pub struct Hash(pub(crate) HashLen);
 
-  const SHIFT_FACTOR: u32 = 4;
+  const SHIFT_FACTOR: u32 = 19;
 
   impl Hash {
     #[inline(always)]
     pub(crate) const fn new() -> Self { Self(0) }
 
     #[inline(always)]
-    pub(crate) fn extend_byte(byte: HashToken) -> HashLen {
+    pub(crate) const fn extend_byte(byte: HashToken) -> HashLen {
       u64::from_le_bytes([byte, !byte, byte, !byte, byte, !byte, byte, !byte])
     }
 
     #[inline(always)]
     pub(crate) fn add(&mut self, byte: HashToken) {
-      self.0 = self
-        .0
-        .wrapping_shl(SHIFT_FACTOR)
-        .wrapping_add(Self::extend_byte(byte));
+      self.0 = self.0.wrapping_shl(SHIFT_FACTOR) ^ Self::extend_byte(byte);
     }
 
     #[inline(always)]
-    pub(crate) fn del(&mut self, len: WindowLen, byte: HashToken) {
-      debug_assert!(len > 0);
-      self.0 = self
-        .0
-        .wrapping_sub(Self::extend_byte(byte).wrapping_shl((len - 1).wrapping_mul(SHIFT_FACTOR)));
+    pub(crate) fn del(&mut self, shift_len: WindowLen, byte: HashToken) {
+      self.0 ^= Self::extend_byte(byte).wrapping_shl(shift_len);
     }
 
     #[inline(always)]
-    pub(crate) fn roll(&mut self, len: WindowLen, old: HashToken, new: HashToken) {
-      self.del(len, old);
+    pub(crate) fn roll(&mut self, shift_len: WindowLen, old: HashToken, new: HashToken) {
+      self.del(shift_len, old);
       self.add(new);
     }
   }
@@ -74,7 +68,7 @@ pub mod hashing {
   #[derive(Debug, Clone)]
   struct HashWindow {
     hash: Hash,
-    window_len: WindowLen,
+    shift_len: WindowLen,
   }
 
   impl HashWindow {
@@ -82,19 +76,19 @@ pub mod hashing {
     pub const fn new() -> Self {
       Self {
         hash: Hash::new(),
-        window_len: 0,
+        shift_len: 0,
       }
     }
 
     #[inline(always)]
     pub fn add_next_to_window(&mut self, next: HashToken) {
       self.hash.add(next);
-      self.window_len += 1;
+      self.shift_len += SHIFT_FACTOR;
     }
 
     #[inline(always)]
     pub fn roll(&mut self, old: HashToken, new: HashToken) {
-      self.hash.roll(self.window_len, old, new);
+      self.hash.roll(self.shift_len, old, new);
     }
 
     #[inline(always)]
@@ -131,6 +125,9 @@ pub mod hashing {
           }
         },
       };
+      /* NB: This allows us to avoid a subtract operation in the Hash::del()
+       * method. */
+      self.shift_len -= SHIFT_FACTOR;
       debug_assert_eq!(offset.as_size(), window_len as usize);
       offset
     }
@@ -247,15 +244,15 @@ pub mod hashing {
 
       let hashes: Vec<_> = it.collect();
       assert_eq!(hashes, vec![
-        Hash(15934541573398909606),
-        Hash(15144992216158423233),
-        Hash(2512202500310636675),
-        Hash(3301751857551123348),
-        Hash(15934541573398909606),
-        Hash(15144992216158423233),
-        Hash(2512202500310636675),
-        Hash(3301751857551123348),
-        Hash(15934541573398909606)
+        Hash(11286406054717856102),
+        Hash(7670628888473607777),
+        Hash(17210830329770380403),
+        Hash(12438767043388152676),
+        Hash(11286406054717856102),
+        Hash(7670628888473607777),
+        Hash(17210830329770380403),
+        Hash(12438767043388152676),
+        Hash(11286406054717856102)
       ]);
 
       let s2 = b"asdfgasdfasdf";
@@ -267,16 +264,16 @@ pub mod hashing {
 
       let hashes: Vec<_> = it2.collect();
       assert_eq!(hashes, vec![
-        Hash(15934541573398909606),
-        Hash(14714328930390885063),
-        Hash(15360323859042192081),
-        Hash(4880850572032096643),
-        Hash(4450187286264558484),
-        Hash(15934541573398909606),
-        Hash(15144992216158423233),
-        Hash(2512202500310636675),
-        Hash(3301751857551123348),
-        Hash(15934541573398909606)
+        Hash(11286406054717856102),
+        Hash(7815304818856532071),
+        Hash(14770404751692111457),
+        Hash(12292969630548069491),
+        Hash(12582882231464008548),
+        Hash(11286406054717856102),
+        Hash(7670628888473607777),
+        Hash(17210830329770380403),
+        Hash(12438767043388152676),
+        Hash(11286406054717856102)
       ]);
     }
 
@@ -292,15 +289,15 @@ pub mod hashing {
 
       let hashes: Vec<_> = it.collect();
       assert_eq!(hashes, vec![
-        Hash(7642200561588687526),
-        Hash(11594918685267904705),
-        Hash(1051412655096469635),
-        Hash(16822773337949610900),
-        Hash(10910125041199403686),
-        Hash(8541478137910708417),
-        Hash(7536596118509983875),
-        Hash(9905244310308529044),
-        Hash(10910125041199403686)
+        Hash(11286406054717856102),
+        Hash(10118016390498721377),
+        Hash(1814617805841730675),
+        Hash(12038385073892662116),
+        Hash(8396252233597360486),
+        Hash(12621013929200557665),
+        Hash(9308607585786236019),
+        Hash(12038385073892662116),
+        Hash(8396252233597360486)
       ]);
 
       let mut it_r = HashWindowIt::empty_window(s, WindowDirection::Right);
@@ -308,15 +305,15 @@ pub mod hashing {
 
       let hashes: Vec<_> = it_r.collect();
       assert_eq!(hashes, vec![
-        Hash(14192409407574059409),
-        Hash(5717790302609683062),
-        Hash(17697839403322819268),
-        Hash(6464423775427344563),
-        Hash(11197234180395968913),
-        Hash(13135218888888889974),
-        Hash(7249488267823268548),
-        Hash(5311502270820497587),
-        Hash(11197234180395968913)
+        Hash(16779045510005235297),
+        Hash(2945601288652364134),
+        Hash(3112776078462327652),
+        Hash(2415191569027271795),
+        Hash(12035020511624404577),
+        Hash(15289668250356324710),
+        Hash(12624378491468815204),
+        Hash(2415191569027271795),
+        Hash(12035020511624404577)
       ]);
     }
 
@@ -332,9 +329,9 @@ pub mod hashing {
 
       let hashes: Vec<_> = it.collect();
       assert_eq!(hashes, vec![
-        Hash(8254379643877814915),
-        Hash(7105944215164379796),
-        Hash(5742177143567175590)
+        Hash(9187201950435478643),
+        Hash(17940362863843253092),
+        Hash(4774451407313344870)
       ]);
 
       let mut it2 = HashWindowIt::empty_window(s2, WindowDirection::Left);
@@ -342,8 +339,8 @@ pub mod hashing {
 
       let hashes: Vec<_> = it2.collect();
       assert_eq!(hashes, vec![
-        Hash(7105944215164379796),
-        Hash(5742177143567175590)
+        Hash(17940362863843253092),
+        Hash(4774451407313344870)
       ]);
 
       let mut it_r = HashWindowIt::empty_window(s, WindowDirection::Right);
@@ -351,9 +348,9 @@ pub mod hashing {
 
       let hashes: Vec<_> = it_r.collect();
       assert_eq!(hashes, vec![
-        Hash(3588860714729484740),
-        Hash(4809073357737509555),
-        Hash(7321275858048148881)
+        Hash(5787213827046415204),
+        Hash(6293595036912422003),
+        Hash(18302063728033111649)
       ]);
 
       let s_r = b"fdsa";
@@ -364,9 +361,9 @@ pub mod hashing {
 
       let hashes: Vec<_> = it_2r.collect();
       assert_eq!(hashes, vec![
-        Hash(3588860714729484740),
-        Hash(4809073357737509555),
-        Hash(7321275858048148881)
+        Hash(5787213827046415204),
+        Hash(6293595036912422003),
+        Hash(18302063728033111649)
       ]);
 
       let mut it_r2r = HashWindowIt::empty_window(s_r, WindowDirection::Right);
@@ -374,9 +371,9 @@ pub mod hashing {
 
       let hashes: Vec<_> = it_r2r.collect();
       assert_eq!(hashes, vec![
-        Hash(8254379643877814915),
-        Hash(7105944215164379796),
-        Hash(5742177143567175590)
+        Hash(9187201950435478643),
+        Hash(17940362863843253092),
+        Hash(4774451407313344870)
       ]);
     }
 
@@ -389,13 +386,13 @@ pub mod hashing {
       it.initialize_window(4);
 
       let hashes: Vec<_> = it.collect();
-      assert_eq!(hashes, vec![Hash(15934541573398909606)]);
+      assert_eq!(hashes, vec![Hash(11286406054717856102)]);
 
       let mut it_r = HashWindowIt::empty_window(s, WindowDirection::Right);
       it_r.initialize_window(4);
 
       let hashes: Vec<_> = it_r.collect();
-      assert_eq!(hashes, vec![Hash(3732415143318661521)]);
+      assert_eq!(hashes, vec![Hash(16779045510005235297)]);
 
       let s_r = b"fdsa";
       let s_r: &[u8] = s_r.as_ref();
@@ -404,13 +401,13 @@ pub mod hashing {
       it_2r.initialize_window(4);
 
       let hashes: Vec<_> = it_2r.collect();
-      assert_eq!(hashes, vec![Hash(3732415143318661521)]);
+      assert_eq!(hashes, vec![Hash(16779045510005235297)]);
 
       let mut it_r2r = HashWindowIt::empty_window(s_r, WindowDirection::Right);
       it_r2r.initialize_window(4);
 
       let hashes: Vec<_> = it_r2r.collect();
-      assert_eq!(hashes, vec![Hash(15934541573398909606)]);
+      assert_eq!(hashes, vec![Hash(11286406054717856102)]);
     }
   }
 }
