@@ -58,6 +58,11 @@ pub enum WindowDirection {
   Right,
 }
 
+#[derive(Debug, Clone)]
+struct WindowFilter {
+  state: u64,
+}
+
 const SIMD_HASH_WINDOW_LENGTH: ComponentLen = 4;
 
 #[derive(Debug, Clone)]
@@ -261,7 +266,49 @@ unsafe impl<'h> iter::TrustedLen for HashWindowIt<'h> {}
 
 #[cfg(test)]
 mod test {
+  use core::mem;
+
   use super::*;
+
+  #[test]
+  fn long_window() {
+    let s = b"asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdf";
+    let s: &[u8] = s.as_ref();
+    assert_eq!(100, s.len());
+
+    let mut it = HashWindowIt::empty_window(s, WindowDirection::Left);
+    it.initialize_window(92);
+    assert!(92 > mem::size_of::<HashLen>() * 8);
+
+    let hashes: Vec<_> = it.collect();
+    assert_eq!(hashes, vec![
+      Hash(9838263505978427426),
+      Hash(1229782938247303333),
+      Hash(2459565876494606781),
+      Hash(4919131752989213662),
+      Hash(9838263505978427426),
+      Hash(1229782938247303333),
+      Hash(2459565876494606781),
+      Hash(4919131752989213662),
+      Hash(9838263505978427426)
+    ]);
+
+    let mut it_r = HashWindowIt::empty_window(s, WindowDirection::Right);
+    it_r.initialize_window(92);
+
+    let hashes: Vec<_> = it_r.collect();
+    assert_eq!(hashes, vec![
+      Hash(15987178197214944631),
+      Hash(13527612320720337748),
+      Hash(8608480567731123980),
+      Hash(17216961135462248075),
+      Hash(15987178197214944631),
+      Hash(13527612320720337748),
+      Hash(8608480567731123980),
+      Hash(17216961135462248075),
+      Hash(15987178197214944631)
+    ]);
+  }
 
   #[test]
   fn hashes_iterator() {
