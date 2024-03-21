@@ -31,6 +31,8 @@ pub mod hashing {
   #[repr(transparent)]
   pub struct Hash(pub(crate) HashLen);
 
+  /* TODO: if we make this 16 (= u64 / n = 4), the shift cancels out and we can entirely avoid the
+   * "del" operation for size 4 windows!! This is a "self-anihillating recursive method"! */
   const SHIFT_FACTOR: u32 = 19;
 
   impl Hash {
