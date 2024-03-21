@@ -25,36 +25,41 @@ pub mod hashing {
 
   type HashToken = u8;
   type HashLen = u64;
+  type WindowLen = u32;
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq)]
   #[repr(transparent)]
   pub struct Hash(pub(crate) HashLen);
 
-  const SHIFT_FACTOR: u32 = 1;
+  const SHIFT_FACTOR: u32 = 19;
 
   impl Hash {
     #[inline(always)]
     pub(crate) const fn new() -> Self { Self(0) }
 
     #[inline(always)]
+    pub(crate) fn extend_byte(byte: HashToken) -> HashLen {
+      u64::from_le_bytes([byte, !byte, byte, !byte, byte, !byte, byte, !byte])
+    }
+
+    #[inline(always)]
     pub(crate) fn add(&mut self, byte: HashToken) {
-      /* 8 + 3 * x (=? 19) > 64 */
       self.0 = self
         .0
         .wrapping_shl(SHIFT_FACTOR)
-        .wrapping_add(HashLen::from(byte));
+        .wrapping_add(Self::extend_byte(byte));
     }
 
     #[inline(always)]
-    pub(crate) fn del(&mut self, factor: HashLen, byte: HashToken) {
+    pub(crate) fn del(&mut self, len: WindowLen, byte: HashToken) {
       self.0 = self
         .0
-        .wrapping_sub(HashLen::from(byte).wrapping_mul(factor));
+        .wrapping_sub(Self::extend_byte(byte).wrapping_shl(len.wrapping_mul(SHIFT_FACTOR)));
     }
 
     #[inline(always)]
-    pub(crate) fn roll(&mut self, factor: HashLen, old: HashToken, new: HashToken) {
-      self.del(factor, old);
+    pub(crate) fn roll(&mut self, len: WindowLen, old: HashToken, new: HashToken) {
+      self.del(len, old);
       self.add(new);
     }
   }
@@ -66,45 +71,9 @@ pub mod hashing {
   }
 
   #[derive(Debug, Clone)]
-  struct WindowFilter {
-    state: u64,
-  }
-
-  const SIMD_HASH_WINDOW_LENGTH: ComponentLen = 4;
-
-  #[derive(Debug, Clone)]
-  struct SIMDHashWindow {
-    hashes: [Hash; SIMD_HASH_WINDOW_LENGTH],
-  }
-
-  impl SIMDHashWindow {
-    #[inline(always)]
-    const fn calculate_div_factor() -> HashLen {
-      1u64.wrapping_shl((SIMD_HASH_WINDOW_LENGTH as u32) - 1)
-    }
-
-    #[inline(always)]
-    pub const fn blank() -> Self {
-      Self {
-        hashes: unsafe { MaybeUninit::zeroed().assume_init() },
-      }
-    }
-
-    /* TODO: do this on the GPU! */
-    #[inline]
-    pub fn initialize(&mut self, window: &[HashToken; SIMD_HASH_WINDOW_LENGTH]) {
-      for (i, b) in window.iter().copied().enumerate() {
-        for h in self.hashes[0..=i].iter_mut() {
-          h.add(b);
-        }
-      }
-    }
-  }
-
-  #[derive(Debug, Clone)]
   struct HashWindow {
     hash: Hash,
-    hash_2pow: HashLen,
+    window_len: WindowLen,
   }
 
   impl HashWindow {
@@ -112,22 +81,19 @@ pub mod hashing {
     pub const fn new() -> Self {
       Self {
         hash: Hash::new(),
-        hash_2pow: 1,
+        window_len: 0,
       }
     }
 
     #[inline(always)]
-    pub fn add_first_to_window(&mut self, first: HashToken) { self.hash.add(first); }
-
-    #[inline(always)]
     pub fn add_next_to_window(&mut self, next: HashToken) {
       self.hash.add(next);
-      self.hash_2pow = self.hash_2pow.wrapping_shl(SHIFT_FACTOR);
+      self.window_len += 1;
     }
 
     #[inline(always)]
     pub fn roll(&mut self, old: HashToken, new: HashToken) {
-      self.hash.roll(self.hash_2pow, old, new);
+      self.hash.roll(self.window_len, old, new);
     }
 
     #[inline(always)]
@@ -138,7 +104,7 @@ pub mod hashing {
       &mut self,
       entire_input: &[HashToken],
       direction: WindowDirection,
-      window_len: ComponentLen,
+      window_len: WindowLen,
     ) -> ComponentOffset {
       assert!(
         (window_len as usize) <= entire_input.len(),
@@ -146,17 +112,9 @@ pub mod hashing {
       );
       let mut offset = ComponentOffset::zero();
       assert_ne!(window_len, 0, "empty hash window not supported!");
-      let (first, rest) = match direction {
-        WindowDirection::Left => entire_input.split_first().unwrap(),
-        WindowDirection::Right => entire_input.split_last().unwrap(),
-      };
-      self.add_first_to_window(*first);
-      unsafe {
-        offset.unchecked_increment();
-      }
       match direction {
         WindowDirection::Left => {
-          for b in rest.iter().copied().take((window_len as usize) - 1) {
+          for b in entire_input.iter().copied().take(window_len as usize) {
             self.add_next_to_window(b);
             unsafe {
               offset.unchecked_increment();
@@ -164,7 +122,7 @@ pub mod hashing {
           }
         },
         WindowDirection::Right => {
-          for b in rest.iter().rev().copied().take((window_len as usize) - 1) {
+          for b in entire_input.iter().rev().copied().take(window_len as usize) {
             self.add_next_to_window(b);
             unsafe {
               offset.unchecked_increment();
@@ -183,7 +141,7 @@ pub mod hashing {
     offset: Option<ComponentOffset>,
     direction: WindowDirection,
     window: HashWindow,
-    window_len: Option<ComponentLen>,
+    window_len: Option<WindowLen>,
   }
   impl<'h> HashWindowIt<'h> {
     #[inline(always)]
@@ -204,7 +162,7 @@ pub mod hashing {
     }
 
     #[inline(always)]
-    pub fn window_len(&self) -> ComponentLen { self.window_len.unwrap() }
+    pub fn window_len(&self) -> WindowLen { self.window_len.unwrap() }
 
     #[inline(always)]
     pub fn remaining(&self) -> ComponentLen {
@@ -218,7 +176,7 @@ pub mod hashing {
     }
 
     #[inline]
-    pub fn initialize_window(&mut self, window_len: ComponentLen) {
+    pub fn initialize_window(&mut self, window_len: WindowLen) {
       self.window_len = Some(window_len);
       self.offset = Some(self.window.initialize_window_at_border(
         self.input,
@@ -289,15 +247,15 @@ pub mod hashing {
 
       let hashes: Vec<_> = it.collect();
       assert_eq!(hashes, vec![
-        Hash(9838263505978427426),
-        Hash(1229782938247303333),
-        Hash(2459565876494606781),
-        Hash(4919131752989213662),
-        Hash(9838263505978427426),
-        Hash(1229782938247303333),
-        Hash(2459565876494606781),
-        Hash(4919131752989213662),
-        Hash(9838263505978427426)
+        Hash(6011902305849743718),
+        Hash(17865236659295067745),
+        Hash(16384270818617298035),
+        Hash(16508759451398609764),
+        Hash(1162454594497190246),
+        Hash(6912482365530021473),
+        Hash(16384270818617298035),
+        Hash(16508759451398609764),
+        Hash(1162454594497190246)
       ]);
 
       let mut it_r = HashWindowIt::empty_window(s, WindowDirection::Right);
@@ -305,15 +263,15 @@ pub mod hashing {
 
       let hashes: Vec<_> = it_r.collect();
       assert_eq!(hashes, vec![
-        Hash(15987178197214944631),
-        Hash(13527612320720337748),
-        Hash(8608480567731123980),
-        Hash(17216961135462248075),
-        Hash(15987178197214944631),
-        Hash(13527612320720337748),
-        Hash(8608480567731123980),
-        Hash(17216961135462248075),
-        Hash(15987178197214944631)
+        Hash(12043992087985233505),
+        Hash(13693746843256527206),
+        Hash(11147337999284738916),
+        Hash(13364580982864448627),
+        Hash(12273903817643892321),
+        Hash(4182144430250039654),
+        Hash(11147337999284738916),
+        Hash(13364580982864448627),
+        Hash(12273903817643892321)
       ]);
     }
 
@@ -326,13 +284,21 @@ pub mod hashing {
       it.initialize_window(2);
 
       let hashes: Vec<_> = it.collect();
-      assert_eq!(hashes, vec![Hash(309), Hash(330), Hash(302)]);
+      assert_eq!(hashes, vec![
+        Hash(9187483429707156595),
+        Hash(15377707233068227428),
+        Hash(7885399750835870054)
+      ]);
 
       let mut it_r = HashWindowIt::empty_window(s, WindowDirection::Right);
       it_r.initialize_window(2);
 
       let hashes: Vec<_> = it_r.collect();
-      assert_eq!(hashes, vec![Hash(304), Hash(315), Hash(327)]);
+      assert_eq!(hashes, vec![
+        Hash(7393053072342424420),
+        Hash(17671774298409503859),
+        Hash(16079217354109197921)
+      ]);
 
       let s_r = b"fdsa";
       let s_r: &[u8] = s_r.as_ref();
@@ -341,13 +307,21 @@ pub mod hashing {
       it_2r.initialize_window(2);
 
       let hashes: Vec<_> = it_2r.collect();
-      assert_eq!(hashes, vec![Hash(304), Hash(315), Hash(327)]);
+      assert_eq!(hashes, vec![
+        Hash(7393053072342424420),
+        Hash(17671774298409503859),
+        Hash(16079217354109197921)
+      ]);
 
       let mut it_r2r = HashWindowIt::empty_window(s_r, WindowDirection::Right);
       it_r2r.initialize_window(2);
 
       let hashes: Vec<_> = it_r2r.collect();
-      assert_eq!(hashes, vec![Hash(309), Hash(330), Hash(302)]);
+      assert_eq!(hashes, vec![
+        Hash(9187483429707156595),
+        Hash(15377707233068227428),
+        Hash(7885399750835870054)
+      ]);
     }
 
     #[test]
@@ -359,13 +333,13 @@ pub mod hashing {
       it.initialize_window(4);
 
       let hashes: Vec<_> = it.collect();
-      assert_eq!(hashes, vec![Hash(1538)]);
+      assert_eq!(hashes, vec![Hash(6011902305849743718)]);
 
       let mut it_r = HashWindowIt::empty_window(s, WindowDirection::Right);
       it_r.initialize_window(4);
 
       let hashes: Vec<_> = it_r.collect();
-      assert_eq!(hashes, vec![Hash(1543)]);
+      assert_eq!(hashes, vec![Hash(12043992087985233505)]);
 
       let s_r = b"fdsa";
       let s_r: &[u8] = s_r.as_ref();
@@ -374,13 +348,13 @@ pub mod hashing {
       it_2r.initialize_window(4);
 
       let hashes: Vec<_> = it_2r.collect();
-      assert_eq!(hashes, vec![Hash(1543)]);
+      assert_eq!(hashes, vec![Hash(12043992087985233505)]);
 
       let mut it_r2r = HashWindowIt::empty_window(s_r, WindowDirection::Right);
       it_r2r.initialize_window(4);
 
       let hashes: Vec<_> = it_r2r.collect();
-      assert_eq!(hashes, vec![Hash(1538)]);
+      assert_eq!(hashes, vec![Hash(6011902305849743718)]);
     }
   }
 }
