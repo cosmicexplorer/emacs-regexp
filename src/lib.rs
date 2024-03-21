@@ -44,7 +44,7 @@ pub enum Chunking {
   Streaming,
 }
 
-type ComponentLen = u32;
+type ComponentLen = usize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
@@ -55,16 +55,10 @@ impl ComponentOffset {
   pub const fn zero() -> Self { Self(0) }
 
   #[inline(always)]
-  pub const fn as_size(self) -> usize { self.0 as usize }
+  pub const fn as_size(self) -> usize { self.0 }
 
   #[inline(always)]
-  pub fn try_from_size(x: usize) -> Option<Self> {
-    let x: Result<ComponentLen, _> = x.try_into();
-    Some(Self(x.ok()?))
-  }
-
-  #[inline(always)]
-  pub unsafe fn unsafe_from_size(x: usize) -> Self { Self(x as ComponentLen) }
+  pub fn from_size(x: usize) -> Self { Self(x) }
 
   #[inline(always)]
   pub unsafe fn unchecked_increment(&mut self) { self.0 = self.0.unchecked_add(1); }
@@ -78,7 +72,7 @@ impl ComponentOffset {
   }
 }
 
-type GlobalLen = u64;
+type GlobalLen = u128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]

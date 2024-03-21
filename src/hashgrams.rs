@@ -40,7 +40,9 @@ impl Hash {
 
   #[inline(always)]
   pub(crate) fn del(&mut self, factor: HashLen, byte: HashToken) {
-    self.0 = self.0.wrapping_sub(HashLen::from(byte).wrapping_mul(factor));
+    self.0 = self
+      .0
+      .wrapping_sub(HashLen::from(byte).wrapping_mul(factor));
   }
 
   #[inline(always)]
@@ -60,12 +62,14 @@ const SIMD_HASH_WINDOW_LENGTH: ComponentLen = 4;
 
 #[derive(Debug, Clone)]
 struct SIMDHashWindow {
-  hashes: [Hash; SIMD_HASH_WINDOW_LENGTH as usize],
+  hashes: [Hash; SIMD_HASH_WINDOW_LENGTH],
 }
 
 impl SIMDHashWindow {
   #[inline(always)]
-  const fn calculate_div_factor() -> HashLen { 1u64.wrapping_shl(SIMD_HASH_WINDOW_LENGTH - 1) }
+  const fn calculate_div_factor() -> HashLen {
+    1u64.wrapping_shl((SIMD_HASH_WINDOW_LENGTH as u32) - 1)
+  }
 
   #[inline(always)]
   pub const fn blank() -> Self {
@@ -74,13 +78,12 @@ impl SIMDHashWindow {
     }
   }
 
+  /* TODO: do this on the GPU! */
   #[inline]
-  pub fn initialize(&mut self, window: &[HashToken; SIMD_HASH_WINDOW_LENGTH as usize]) {
-    for i in 0..window.len() {
-      let b = window.get(i).unwrap();
-      for j in 0..=i {
-        let h = self.hashes.get_mut(j).unwrap();
-        h.add(*b);
+  pub fn initialize(&mut self, window: &[HashToken; SIMD_HASH_WINDOW_LENGTH]) {
+    for (i, b) in window.iter().copied().enumerate() {
+      for h in self.hashes[0..=i].iter_mut() {
+        h.add(b);
       }
     }
   }
@@ -173,10 +176,6 @@ pub struct HashWindowIt<'h> {
 impl<'h> HashWindowIt<'h> {
   #[inline(always)]
   pub fn empty_window(input: &'h [HashToken], direction: WindowDirection) -> Self {
-    assert!(
-      ComponentOffset::try_from_size(input.len()).is_some(),
-      "input must fit within ComponentLen"
-    );
     Self {
       input,
       offset: None,
@@ -188,7 +187,7 @@ impl<'h> HashWindowIt<'h> {
 
   #[inline(always)]
   pub fn input_len(&self) -> ComponentLen {
-    let ComponentOffset(len) = unsafe { ComponentOffset::unsafe_from_size(self.input.len()) };
+    let ComponentOffset(len) = ComponentOffset::from_size(self.input.len());
     len
   }
 
