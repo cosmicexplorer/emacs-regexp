@@ -1,4 +1,4 @@
-/* Description: ???
+/* Description: Probabilistic set data structures.
 
 Copyright (C) 2024 Danny McClanahan <dmcC2@hypnicjerk.ai>
 SPDX-License-Identifier: GPL-3.0-or-later
@@ -16,8 +16,4 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
-#![warn(rustdoc::missing_crate_level_docs)]
-// #![warn(missing_docs)]
-#![deny(unsafe_code)]
-/* Ensure any doctest warnings fails the doctest! */
-#![doc(test(attr(deny(warnings))))]
+//! Probabilistic set data structures.

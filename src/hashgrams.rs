@@ -11,9 +11,9 @@ License, or (at your option) any later version.
 This file is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Lesser General Public License for more details.
+GNU General Public License for more details.
 
-You should have received a copy of the GNU Lesser General Public License
+You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Rolling window hash iterators.
@@ -31,8 +31,9 @@ pub mod hashing {
   #[repr(transparent)]
   pub struct Hash(pub(crate) HashLen);
 
-  /* TODO: if we make this 16 (= u64 / n = 4), the shift cancels out and we can entirely avoid the
-   * "del" operation for size 4 windows!! This is a "self-anihillating recursive method"! */
+  /* TODO: if we make this 16 (= u64 / n = 4), the shift cancels out and we can
+   * entirely avoid the "del" operation for size 4 windows!! This is a
+   * "self-anihillating recursive method"! */
   const SHIFT_FACTOR: u32 = 19;
 
   impl Hash {

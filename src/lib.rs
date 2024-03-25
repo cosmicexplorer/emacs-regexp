@@ -11,9 +11,9 @@ License, or (at your option) any later version.
 This file is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Lesser General Public License for more details.
+GNU General Public License for more details.
 
-You should have received a copy of the GNU Lesser General Public License
+You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Implementation of emacs regex matching!
@@ -27,6 +27,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(unchecked_math)]
 #![feature(trusted_len)]
 
+pub mod filters;
 pub mod hashgrams;
 pub mod literal;
 pub mod trie;
