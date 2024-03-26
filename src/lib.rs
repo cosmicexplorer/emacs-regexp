@@ -27,6 +27,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(unchecked_math)]
 #![feature(trusted_len)]
 #![feature(portable_simd)]
+#![feature(slice_as_chunks)]
 
 pub mod filters;
 pub mod hashgrams;

@@ -27,6 +27,10 @@ pub mod hashing {
   type HashLen = u64;
   type WindowLen = u32;
 
+  /* #[derive(Debug, Copy, Clone, PartialEq, Eq)] */
+  /* #[repr(transparent)] */
+  /* pub struct SelfAnihillatingHash(pub(crate) u32); */
+
   #[derive(Debug, Copy, Clone, PartialEq, Eq)]
   #[repr(transparent)]
   pub struct Hash(pub(crate) HashLen);

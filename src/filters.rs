@@ -73,6 +73,14 @@ impl Filter {
     let key = Self::perfect_key(needle);
     (self.bits & key) == key
   }
+
+  /* pub fn rolling_matches(&self, haystack: &[u8]) -> impl Iterator<Item=()> { */
+  /* let (chunks, remainder) = haystack.as_chunks::<4>(); */
+  /* for chunk in chunks.iter() { */
+  /* todo!(); */
+  /* } */
+  /* todo!() */
+  /* } */
 }
 
 #[cfg(test)]
