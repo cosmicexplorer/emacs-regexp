@@ -28,6 +28,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(trusted_len)]
 #![feature(portable_simd)]
 #![feature(slice_as_chunks)]
+#![feature(maybe_uninit_uninit_array)]
+#![feature(maybe_uninit_array_assume_init)]
 
 pub mod filters;
 pub mod hashgrams;

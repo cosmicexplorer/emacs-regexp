@@ -18,10 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Probabilistic set data structures.
 
-use core::{
-  array,
-  simd::{num::SimdUint, Simd},
-};
+use core::{array, mem::MaybeUninit, simd::prelude::*};
 
 #[derive(Debug)]
 struct Filter {
@@ -110,13 +107,36 @@ impl Filter {
     (left_result, right_result)
   }
 
-  /* pub fn rolling_matches(&self, haystack: &[u8]) -> impl Iterator<Item=()> { */
-  /* let (chunks, remainder) = haystack.as_chunks::<4>(); */
-  /* for chunk in chunks.iter() { */
-  /* todo!(); */
-  /* } */
-  /* todo!() */
-  /* } */
+  #[inline(always)]
+  fn all_adjacent_keys(needles: &[u8; 8]) -> ([u16; 5], [u8; 8]) {
+    let needles: Simd<u8, 8> = Simd::from_array(*needles);
+
+    /* [0000000|1, 0000000|0, 0000000|0, 0000000|1] */
+    const LSHIFTS: Simd<u8, 8> = Simd::from_array([7, 6, 5, 4, 3, 2, 1, 0]);
+    let lsb_mask: Simd<u8, 8> = Simd::splat(0b1);
+
+    let h: Simd<u8, 8> = Simd::from_array(array::from_fn(|i| {
+      (((needles >> (8u8 - ((i as u8) + 1u8))) & lsb_mask) << LSHIFTS).reduce_or()
+    }));
+
+    let right_bits: Simd<u8, 8> = Simd::splat(0b0000_1111);
+    let init_bits: Simd<u16, 8> = Simd::splat(0b1);
+
+    let mut result: [MaybeUninit<u16>; 5] = MaybeUninit::uninit_array();
+    for i in 0..5 {
+      let shift: u8 = 5 - ((i as u8) + 1);
+      let hashes: Simd<u16, 8> =
+        Simd::from_array(Self::widen_u8(((h >> shift) & right_bits).into()));
+      let cur_result: u16 = (init_bits << hashes).reduce_or();
+      unsafe { result.get_unchecked_mut(i).write(cur_result) };
+    }
+    (unsafe { MaybeUninit::array_assume_init(result) }, h.into())
+  }
+
+  pub fn rolling_matches(&self, haystack: &[u8]) {
+    let (prefix, middle, suffix): (&[u8], &[Simd<u8, 4>], &[u8]) = haystack.as_simd();
+    todo!()
+  }
 }
 
 #[cfg(test)]
@@ -142,5 +162,17 @@ mod test {
     let (a2, b2) = Filter::adjacent_keys(b"abcdasdf");
     assert_eq!(a, a2);
     assert_eq!(b, b2);
+  }
+
+  #[test]
+  fn all_adjacent() {
+    let a1 = Filter::perfect_key(*b"abcd");
+    let a2 = Filter::perfect_key(*b"bcda");
+    let a3 = Filter::perfect_key(*b"cdas");
+    let a4 = Filter::perfect_key(*b"dasd");
+    let a5 = Filter::perfect_key(*b"asdf");
+
+    let (b, _) = Filter::all_adjacent_keys(b"abcdasdf");
+    assert_eq!(b, [a1, a2, a3, a4, a5]);
   }
 }
