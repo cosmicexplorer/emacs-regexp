@@ -35,6 +35,7 @@ pub mod filters;
 pub mod hashgrams;
 pub mod literal;
 pub mod trie;
+pub mod litblock;
 
 pub mod input {
   pub trait Input {}
