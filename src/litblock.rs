@@ -43,7 +43,49 @@ where A: Allocator
   /// right-truncation.
   pub remaining_word: &'t [SymbolIndex],
   /// The possibly-reduced sequence of symbols remaining in the word.
+  /* FIXME: use some sort of immutable set structure to avoid allocation for subsets! */
   pub remaining_symbols: Vec<SymbolIndex, A>,
+}
+
+#[inline(always)]
+fn add_if_new_symbol<A>(symbol_set: &mut Vec<SymbolIndex, A>, i: SymbolIndex)
+where A: Allocator {
+  match symbol_set.iter().find(|s| **s == i) {
+    Some(_) => (),
+    None => {
+      symbol_set.push(i);
+    },
+  }
+}
+
+impl<'t, A> DerivedWord<'t, A>
+where A: Allocator
+{
+  pub fn left_truncate(word: &'t Word<A>, offset: ComponentOffset, alloc: A) -> Self {
+    let ComponentOffset(offset) = offset;
+    let remaining_word: &'t [SymbolIndex] = &word.word[offset..];
+
+    Self::from_truncated(remaining_word, alloc)
+  }
+
+  pub fn right_truncate(word: &'t Word<A>, offset: ComponentOffset, alloc: A) -> Self {
+    let ComponentOffset(offset) = offset;
+    let remaining_word: &'t [SymbolIndex] = &word.word[..(word.word.len() - offset)];
+
+    Self::from_truncated(remaining_word, alloc)
+  }
+
+  fn from_truncated(remaining_word: &'t [SymbolIndex], alloc: A) -> Self {
+    let mut remaining_symbols: Vec<SymbolIndex, A> = Vec::new_in(alloc);
+
+    for s in remaining_word.iter().copied() {
+      add_if_new_symbol(&mut remaining_symbols, s);
+    }
+    Self {
+      remaining_word,
+      remaining_symbols,
+    }
+  }
 }
 
 pub struct LitBlock<A>
@@ -78,16 +120,9 @@ where A: Allocator
       let mut word: Vec<SymbolIndex, A> = Vec::new_in(alloc.clone());
       let mut symbol_set: Vec<SymbolIndex, A> = Vec::new_in(alloc.clone());
 
-      let mut add_if_new_symbol = |i: SymbolIndex| match symbol_set.iter().find(|s| **s == i) {
-        Some(_) => (),
-        None => {
-          symbol_set.push(i);
-        },
-      };
-
       for byte in lit.into_iter() {
         let index = SymbolIndex(translate_byte(byte));
-        add_if_new_symbol(index);
+        add_if_new_symbol(&mut symbol_set, index);
         word.push(index);
       }
       max_len = max_len.max(word.len());
@@ -113,16 +148,12 @@ pub enum LeftLitContinuation {
   Single(WordIndex, ComponentOffset),
 }
 
+impl LeftLitContinuation {}
+
 struct LeftIndexedLiteral<'t, A>
 where A: Allocator
 {
-  base: &'t LitBlock<A>,
-  word_index: WordIndex,
-  left_offset: ComponentOffset,
+  derived_word: DerivedWord<'t, A>,
 }
 
-impl<'t, A> LeftIndexedLiteral<'t, A>
-where A: Allocator
-{
-  fn f();
-}
+impl<'t, A> LeftIndexedLiteral<'t, A> where A: Allocator {}
