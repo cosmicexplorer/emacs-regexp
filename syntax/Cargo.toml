@@ -8,7 +8,6 @@ repository.workspace    = true
 authors.workspace       = true
 
 [dependencies]
-regex-syntax            = "0.8.2"
 
 [dev-dependencies]
 

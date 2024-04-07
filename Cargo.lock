@@ -24,9 +24,6 @@ dependencies = [
 [[package]]
 name = "emacs-regexp-syntax"
 version = "0.0.0"
-dependencies = [
- "regex-syntax",
-]
 
 [[package]]
 name = "equivalent"
@@ -57,12 +54,6 @@ dependencies = [
 name = "memchr"
 version = "2.7.1"
 source = "git+https://github.com/cosmicexplorer/memchr?rev=091a2ecbf84614bb215d3ec17acb856a8eca566d#091a2ecbf84614bb215d3ec17acb856a8eca566d"
-
-[[package]]
-name = "regex-syntax"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 
 [[package]]
 name = "rustc-hash"
