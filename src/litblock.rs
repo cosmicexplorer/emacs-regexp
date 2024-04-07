@@ -169,14 +169,14 @@ where A: Allocator
        * contiguous literal substring. */
       for Word { word, .. } in self.words.iter() {
         let mut string: Simd<u8, 32> = Simd::splat(u8::MAX);
-        for (shift, SymbolIndex(sym)) in word.iter().enumerate() {
+        for (shift, SymbolIndex(sym)) in word.iter().copied().enumerate() {
           assert!(
-            shift <= u8::MAX,
+            shift <= (u8::MAX as usize),
             "TODO: literals longer than u8::MAX are unsupported!"
           );
           let shift = shift as u8;
           let symbol_matches: &Simd<u8, 32> = unsafe { alpha_matches.get_unchecked(sym) };
-          string &= (symbol_matches >> shift);
+          string &= symbol_matches >> shift;
         }
       }
 
