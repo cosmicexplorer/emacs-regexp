@@ -33,9 +33,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 pub mod filters;
 pub mod hashgrams;
+pub mod litblock;
 pub mod literal;
 pub mod trie;
-pub mod litblock;
 
 pub mod input {
   pub trait Input {}
@@ -93,6 +93,20 @@ pub mod continuation {
     fn top(&self) -> Self::C;
 
     fn index<'s>(&'s self, c: Self::C) -> impl Into<O>+'s
+    where 's: 't;
+  }
+
+  pub trait Subsettable<'t> {
+    type O;
+
+    fn initial<'s>(&'s self) -> impl Into<Self::O>+'s
+    where 's: 't;
+  }
+
+  pub trait SubsetResumable<'t>: Subsettable<'t> {
+    type C: Continuation;
+
+    fn index<'s>(&'s self, c: Self::C) -> impl Into<<Self as Subsettable<'t>>::O>+'s
     where 's: 't;
   }
 }

@@ -20,7 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{alloc::Allocator, simd::prelude::*};
 
-use crate::{continuation, ComponentOffset};
+use crate::{continuation, ComponentOffset, IntraComponentInterval, UnanchoredMatchResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
@@ -92,6 +92,7 @@ pub struct LitBlock<A>
 where A: Allocator
 {
   alphabet: Vec<u8, A>,
+  symbol_masks: Vec<Simd<u8, 32>, A>,
   words: Vec<Word<A>, A>,
   max_len: usize,
 }
@@ -129,23 +130,68 @@ where A: Allocator
       words.push(Word { word, symbol_set });
     }
 
+    let symbol_masks = Self::alphabet_masks(&alphabet, alloc);
     Self {
       alphabet,
+      symbol_masks,
       words,
       max_len,
     }
   }
 
-  /* pub fn match_keys */
+  fn alphabet_masks(alphabet: &Vec<u8, A>, alloc: A) -> Vec<Simd<u8, 32>, A> {
+    let mut ret: Vec<Simd<u8, 32>, A> = Vec::with_capacity_in(alphabet.len(), alloc);
+
+    for byte in alphabet.iter().copied() {
+      ret.push(Simd::splat(byte));
+    }
+    ret
+  }
+
+  pub fn match_inner(&self, haystack: &[u8], alloc: A) {
+    /* FIXME: cover prefix/suffix! */
+    let (_prefix, middle, _suffix): (&[u8], &[Simd<u8, 32>], &[u8]) = haystack.as_simd();
+
+    let alpha_len = self.symbol_masks.len();
+    /* FIXME: avoid allocating in match! */
+    let mut alpha_matches: Vec<Simd<u8, 32>, A> = Vec::with_capacity_in(alpha_len, alloc);
+    alpha_matches.resize(alpha_len, Simd::splat(0x0));
+
+    for window in middle.iter() {
+      /* Identify all tokens. */
+      for i in 0..alpha_len {
+        unsafe {
+          *alpha_matches.get_unchecked_mut(i) = window & self.symbol_masks.get_unchecked(i);
+        }
+      }
+
+      /* Iterate over each word and shift the masked input to match a
+       * contiguous literal substring. */
+      for Word { word, .. } in self.words.iter() {
+        let mut string: Simd<u8, 32> = Simd::splat(u8::MAX);
+        for (shift, SymbolIndex(sym)) in word.iter().enumerate() {
+          assert!(
+            shift <= u8::MAX,
+            "TODO: literals longer than u8::MAX are unsupported!"
+          );
+          let shift = shift as u8;
+          let symbol_matches: &Simd<u8, 32> = unsafe { alpha_matches.get_unchecked(sym) };
+          string &= (symbol_matches >> shift);
+        }
+      }
+
+      /* FIXME: cover literals across SIMD regions! */
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct WordIndex(pub usize);
 
-pub enum LeftLitContinuation {
-  All,
-  Single(WordIndex, ComponentOffset),
+pub struct LeftLitContinuation {
+  word_index: WordIndex,
+  offset: ComponentOffset,
 }
 
 impl LeftLitContinuation {}
