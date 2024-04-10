@@ -44,9 +44,6 @@ license                 = "GPL-3.0-or-later"
 repository.workspace    = true
 authors.workspace       = true
 
-[lib]
-name                    = "rex"
-
 [dependencies]
 # emacs-regexp-syntax.workspace = true
 # aho-corasick            = "1.1.2"

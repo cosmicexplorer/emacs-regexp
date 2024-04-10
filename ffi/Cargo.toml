@@ -7,6 +7,10 @@ license                 = "GPL-3.0-or-later"
 repository.workspace    = true
 authors.workspace       = true
 
+[lib]
+name                    = "rex"
+crate-type              = ["cdylib"]
+
 [dependencies]
 
 [dev-dependencies]
