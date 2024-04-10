@@ -21,70 +21,32 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![deny(unsafe_code)]
 /* Ensure any doctest warnings fails the doctest! */
 #![doc(test(attr(deny(warnings))))]
+#![feature(allocator_api)]
 
 //! ???
 
-pub mod offsets {
-  use core::{cmp, fmt};
+pub mod ast;
 
-  /// A single position in a regular expression.
-  ///
-  /// A position encodes one half of a span, and include the byte offset, line
-  /// number and column number.
-  #[derive(Clone, Copy, Eq, PartialEq)]
-  pub struct Position {
-    /// The absolute offset of this position, starting at `0` from the
-    /// beginning of the regular expression pattern string.
-    pub offset: usize,
-    /// The line number, starting at `1`.
-    pub line: usize,
-    /// The approximate column number, starting at `1`.
-    pub column: usize,
+pub mod hir {
+  #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  pub enum EscapeKind {
+    /// A backslash escape applied to what would otherwise be interpreted as
+    /// a regex meta-character, e.g. `\*` or `\[`.
+    Meta,
+    /// A backslash escape applied to a character which has no special
+    /// interpretation and is therefore equivalent to the unescaped
+    /// character, e.g. `\%` or `\/`.
+    Superfluous,
   }
+}
 
-  impl fmt::Debug for Position {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-      write!(
-        f,
-        "Position(o: {:?}, l: {:?}, c: {:?})",
-        self.offset, self.line, self.column
-      )
-    }
-  }
+#[cfg(test)]
+mod test {
+  use super::*;
 
-  impl cmp::Ord for Position {
-    fn cmp(&self, other: &Position) -> cmp::Ordering { self.offset.cmp(&other.offset) }
-  }
-
-  impl cmp::PartialOrd for Position {
-    fn partial_cmp(&self, other: &Position) -> Option<cmp::Ordering> { Some(self.cmp(other)) }
-  }
-
-  /// Span represents the position information of a single AST item.
-  ///
-  /// All span positions are absolute byte offsets that can be used on the
-  /// original regular expression that was parsed.
-  #[derive(Clone, Copy, Eq, PartialEq)]
-  pub struct Span {
-    /// The start byte offset.
-    pub start: Position,
-    /// The end byte offset.
-    pub end: Position,
-  }
-
-  impl fmt::Debug for Span {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-      write!(f, "Span({:?}, {:?})", self.start, self.end)
-    }
-  }
-
-  impl cmp::Ord for Span {
-    fn cmp(&self, other: &Span) -> cmp::Ordering {
-      (&self.start, &self.end).cmp(&(&other.start, &other.end))
-    }
-  }
-
-  impl cmp::PartialOrd for Span {
-    fn partial_cmp(&self, other: &Span) -> Option<cmp::Ordering> { Some(self.cmp(other)) }
+  #[test]
+  fn literal() {
+    let s = "asdf";
+    assert_eq!(s, "asdf");
   }
 }
