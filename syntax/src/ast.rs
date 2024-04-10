@@ -331,8 +331,11 @@ pub mod expr {
     },
     /// <expr>\|<expr>
     Alternation {
-      left: Box<Expr<'n, L, A>, A>,
-      right: Box<Expr<'n, L, A>, A>,
+      cases: Vec<Box<Expr<'n, L, A>, A>, A>,
+    },
+    /// <expr><expr>
+    Concatenation {
+      components: Vec<Box<Expr<'n, L, A>, A>, A>,
     },
   }
 }

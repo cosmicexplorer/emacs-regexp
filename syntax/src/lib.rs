@@ -27,6 +27,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 //! ???
 
 pub mod ast;
+pub mod parser;
 
 pub mod encoding {
   use core::hash::Hash;
@@ -35,7 +36,7 @@ pub mod encoding {
 
   pub trait LiteralEncoding {
     type Single: LiteralRequirements+Copy;
-    type String<'n>: LiteralRequirements+Copy+AsRef<[u8]>;
+    type String<'n>: LiteralRequirements+Copy;
   }
 
   pub struct ByteEncoding;
@@ -61,9 +62,7 @@ pub mod encoding {
 }
 
 /// stuff to do with the input string provided as the "pattern"
-pub mod pattern {
-  pub trait PatternParser {}
-}
+pub mod pattern {}
 
 pub mod hir {
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
