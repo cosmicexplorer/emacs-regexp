@@ -39,12 +39,6 @@ pub mod literals {
       pub struct Escaped<LSi>(pub SingleLiteral<LSi>);
     }
   }
-
-  pub mod string {
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    #[repr(transparent)]
-    pub struct StringLiteral<LStr>(pub LStr);
-  }
 }
 
 pub mod character_alternatives {
@@ -55,8 +49,6 @@ pub mod character_alternatives {
   /// https://www.gnu.org/software/emacs/manual/html_node/elisp/Char-Classes.html#Char-Classes
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub enum CharacterClass {
-    /// .
-    Dot, /* any char except newline */
     /// [:ascii:]
     ASCII,
     /// [:nonascii:]
@@ -120,13 +112,11 @@ pub mod character_alternatives {
   where A: Allocator
   {
     pub complemented: ComplementBehavior,
-    pub components: Vec<CharAltComponent<LSi>, A>,
+    pub elements: Vec<CharAltComponent<LSi>, A>,
   }
 }
 
 pub mod postfix_operators {
-  use core::num::NonZeroUsize;
-
   #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub enum GreedyBehavior {
     #[default]
@@ -149,7 +139,7 @@ pub mod postfix_operators {
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
-  pub struct RepeatNumeral(pub NonZeroUsize);
+  pub struct RepeatNumeral(pub usize);
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
@@ -215,6 +205,14 @@ pub mod anchors {
   #[repr(transparent)]
   pub struct WordAnchor {
     pub negation: Negation,
+  }
+
+  #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  pub enum Anchor {
+    Start(StartAnchor),
+    End(EndAnchor),
+    Point(PointAnchor),
+    Word(WordAnchor),
   }
 }
 
@@ -292,10 +290,11 @@ pub mod expr {
   use core::alloc::Allocator;
 
   use super::{
+    anchors::Anchor,
     char_properties::CharPropertiesSelector,
     character_alternatives::CharacterAlternative,
-    groups::GroupKind,
-    literals::{single::escapes::Escaped, string::StringLiteral},
+    groups::{Backref, GroupKind},
+    literals::single::{escapes::Escaped, SingleLiteral},
     postfix_operators::PostfixOp,
   };
   use crate::encoding::LiteralEncoding;
@@ -307,35 +306,41 @@ pub mod expr {
     Prop(CharPropertiesSelector),
     Alt(CharacterAlternative<LSi, A>),
     Esc(Escaped<LSi>),
+    /// .
+    Dot, /* any char except newline */
   }
 
   #[derive(Debug, Clone, PartialEq, Eq)]
-  pub enum Expr<'n, L, A>
+  pub enum Expr<L, A>
   where
     L: LiteralEncoding,
     A: Allocator,
   {
-    /// asdf
-    Literal(StringLiteral<L::String<'n>>),
+    /// a
+    SingleLiteral(L::Single),
+    /// \\ or \+
+    EscapedLiteral(Escaped<L::Single>),
+    /// \\1-9
+    Backref(Backref),
+    /// ^ or $
+    Anchor(Anchor),
     /// [a-z] or \w or \s-
     CharSelector(SingleCharSelector<L::Single, A>),
     /// <expr><op>
     Postfix {
-      inner: Box<Expr<'n, L, A>, A>,
+      inner: Box<Expr<L, A>, A>,
       op: PostfixOp,
     },
     /// (<expr>)
     Group {
       kind: GroupKind,
-      inner: Box<Expr<'n, L, A>, A>,
+      inner: Box<Expr<L, A>, A>,
     },
     /// <expr>\|<expr>
-    Alternation {
-      cases: Vec<Box<Expr<'n, L, A>, A>, A>,
-    },
+    Alternation { cases: Vec<Box<Expr<L, A>, A>, A> },
     /// <expr><expr>
     Concatenation {
-      components: Vec<Box<Expr<'n, L, A>, A>, A>,
+      components: Vec<Box<Expr<L, A>, A>, A>,
     },
   }
 }
