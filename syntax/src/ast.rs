@@ -107,12 +107,34 @@ pub mod character_alternatives {
   }
 
   /// [a-z0-9] or [^a-z]
-  #[derive(Debug, Clone, PartialEq, Eq)]
+  #[derive(Debug, Clone)]
   pub struct CharacterAlternative<LSi, A>
   where A: Allocator
   {
     pub complemented: ComplementBehavior,
     pub elements: Vec<CharAltComponent<LSi>, A>,
+  }
+
+  impl<LSi, A> PartialEq for CharacterAlternative<LSi, A>
+  where
+    LSi: PartialEq,
+    A: Allocator,
+  {
+    fn eq(&self, other: &Self) -> bool {
+      self.complemented == other.complemented
+        && self
+          .elements
+          .iter()
+          .zip(other.elements.iter())
+          .all(|(a, b)| a == b)
+    }
+  }
+
+  impl<LSi, A> Eq for CharacterAlternative<LSi, A>
+  where
+    LSi: Eq,
+    A: Allocator,
+  {
   }
 }
 
@@ -299,7 +321,7 @@ pub mod expr {
   };
   use crate::encoding::LiteralEncoding;
 
-  #[derive(Debug, Clone, PartialEq, Eq)]
+  #[derive(Debug, Clone)]
   pub enum SingleCharSelector<LSi, A>
   where A: Allocator
   {
@@ -310,7 +332,30 @@ pub mod expr {
     Dot, /* any char except newline */
   }
 
-  #[derive(Debug, Clone, PartialEq, Eq)]
+  impl<LSi, A> PartialEq for SingleCharSelector<LSi, A>
+  where
+    LSi: PartialEq,
+    A: Allocator,
+  {
+    fn eq(&self, other: &Self) -> bool {
+      match (self, other) {
+        (Self::Prop(a), Self::Prop(b)) => a == b,
+        (Self::Alt(a), Self::Alt(b)) => a == b,
+        (Self::Esc(a), Self::Esc(b)) => a == b,
+        (Self::Dot, Self::Dot) => true,
+        _ => false,
+      }
+    }
+  }
+
+  impl<LSi, A> Eq for SingleCharSelector<LSi, A>
+  where
+    LSi: Eq,
+    A: Allocator,
+  {
+  }
+
+  #[derive(Debug, Clone)]
   pub enum Expr<L, A>
   where
     L: LiteralEncoding,
@@ -342,5 +387,63 @@ pub mod expr {
     Concatenation {
       components: Vec<Box<Expr<L, A>, A>, A>,
     },
+  }
+
+  impl<L, A> PartialEq for Expr<L, A>
+  where
+    L: LiteralEncoding,
+    A: Allocator,
+  {
+    fn eq(&self, other: &Self) -> bool {
+      match (self, other) {
+        (Self::SingleLiteral(a), Self::SingleLiteral(b)) => a == b,
+        (Self::EscapedLiteral(a), Self::EscapedLiteral(b)) => a == b,
+        (Self::Backref(a), Self::Backref(b)) => a == b,
+        (Self::Anchor(a), Self::Anchor(b)) => a == b,
+        (Self::CharSelector(a), Self::CharSelector(b)) => a == b,
+        (
+          Self::Postfix {
+            inner: inner_a,
+            op: op_a,
+          },
+          Self::Postfix {
+            inner: inner_b,
+            op: op_b,
+          },
+        ) => op_a == op_b && inner_a.eq(inner_b),
+        (
+          Self::Group {
+            kind: kind_a,
+            inner: inner_a,
+          },
+          Self::Group {
+            kind: kind_b,
+            inner: inner_b,
+          },
+        ) => kind_a == kind_b && inner_a.eq(inner_b),
+        (Self::Alternation { cases: cases_a }, Self::Alternation { cases: cases_b }) => {
+          cases_a.iter().zip(cases_b.iter()).all(|(a, b)| a.eq(b))
+        },
+        (
+          Self::Concatenation {
+            components: components_a,
+          },
+          Self::Concatenation {
+            components: components_b,
+          },
+        ) => components_a
+          .iter()
+          .zip(components_b.iter())
+          .all(|(a, b)| a.eq(b)),
+        _ => false,
+      }
+    }
+  }
+
+  impl<L, A> Eq for Expr<L, A>
+  where
+    L: LiteralEncoding,
+    A: Allocator,
+  {
   }
 }

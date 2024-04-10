@@ -116,10 +116,18 @@ where
   for el in components.into_iter() {
     let expr = match el {
       ContextComponent::Alternator => {
-        let new_case = Expr::Concatenation {
-          components: mem::replace(&mut cur_sequence, Vec::new_in(alloc.clone())),
+        let mut these_components = mem::replace(&mut cur_sequence, Vec::new_in(alloc.clone()));
+        let new_case = if these_components.len() == 1 {
+          these_components.pop().unwrap()
+        } else {
+          Box::new_in(
+            Expr::Concatenation {
+              components: these_components,
+            },
+            alloc.clone(),
+          )
         };
-        prev_alt_cases.push(Box::new_in(new_case, alloc.clone()));
+        prev_alt_cases.push(new_case);
         continue;
       },
       ContextComponent::SingleLiteral(SingleLiteral(c)) => Expr::SingleLiteral(c),
@@ -139,15 +147,21 @@ where
     cur_sequence.push(Box::new_in(expr, alloc.clone()));
   }
 
-  if prev_alt_cases.is_empty() {
-    Expr::Concatenation {
-      components: cur_sequence,
-    }
+  let final_case = if cur_sequence.len() == 1 {
+    cur_sequence.pop().unwrap()
   } else {
-    let final_case = Expr::Concatenation {
-      components: cur_sequence,
-    };
-    prev_alt_cases.push(Box::new_in(final_case, alloc));
+    Box::new_in(
+      Expr::Concatenation {
+        components: cur_sequence,
+      },
+      alloc,
+    )
+  };
+
+  if prev_alt_cases.is_empty() {
+    *final_case
+  } else {
+    prev_alt_cases.push(final_case);
     Expr::Alternation {
       cases: prev_alt_cases,
     }
@@ -845,6 +859,7 @@ where A: Allocator+Clone {
       b'.' => ContextComponent::CharSelector(SingleCharSelector::Dot),
       x => ContextComponent::SingleLiteral(SingleLiteral(*x)),
     };
+    components.push(new_component);
     group_context.push((ctx_kind, components));
   }
 
@@ -862,4 +877,21 @@ where A: Allocator+Clone {
   };
 
   Ok(top_level_expr)
+}
+
+#[cfg(test)]
+mod test {
+  use std::alloc::System;
+
+  use super::*;
+  use crate::encoding::ByteEncoding;
+
+  #[test]
+  fn parse_lit() {
+    let parsed = parse_bytes(b"a", System).unwrap();
+    assert!(parsed == Expr::<ByteEncoding, System>::SingleLiteral(b'a'));
+
+    let parsed = parse_bytes(b"\\a", System).unwrap();
+    assert!(parsed == Expr::<ByteEncoding, System>::EscapedLiteral(Escaped(SingleLiteral(b'a'))));
+  }
 }
