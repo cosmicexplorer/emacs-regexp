@@ -2,10 +2,12 @@
 members                 = [
     ".",
     "syntax",
+    "ffi",
 ]
 default-members         = [
     ".",
-    # "syntax",
+    "syntax",
+    "ffi",
 ]
 resolver                = "2"
 
@@ -16,6 +18,7 @@ authors                 = ["Danny McClanahan <dmcC2@hypnicjerk.ai>"]
 
 [workspace.dependencies]
 emacs-regexp-syntax     = { path = "./syntax" }
+emacs-regexp-ffi        = { path = "./ffi" }
 
 [workspace.lints.clippy]
 len_without_is_empty    = "allow"

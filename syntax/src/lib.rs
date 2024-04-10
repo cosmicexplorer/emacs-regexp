@@ -22,6 +22,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 /* Ensure any doctest warnings fails the doctest! */
 #![doc(test(attr(deny(warnings))))]
 
+//! ???
+
 pub mod offsets {
   use core::{cmp, fmt};
 

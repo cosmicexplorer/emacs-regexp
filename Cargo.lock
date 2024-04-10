@@ -22,6 +22,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "emacs-regexp-ffi"
+version = "0.0.0"
+
+[[package]]
 name = "emacs-regexp-syntax"
 version = "0.0.0"
 
