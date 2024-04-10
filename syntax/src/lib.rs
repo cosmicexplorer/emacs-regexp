@@ -22,10 +22,48 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 /* Ensure any doctest warnings fails the doctest! */
 #![doc(test(attr(deny(warnings))))]
 #![feature(allocator_api)]
+#![feature(trait_alias)]
 
 //! ???
 
 pub mod ast;
+
+pub mod encoding {
+  use core::hash::Hash;
+
+  trait LiteralRequirements = Eq+Ord+Clone+Hash;
+
+  pub trait LiteralEncoding {
+    type Single: LiteralRequirements+Copy;
+    type String<'n>: LiteralRequirements+Copy+AsRef<[u8]>;
+  }
+
+  pub struct ByteEncoding;
+  impl LiteralEncoding for ByteEncoding {
+    type Single = u8;
+    type String<'n> = &'n [u8];
+  }
+
+  pub struct UnicodeEncoding;
+  impl LiteralEncoding for UnicodeEncoding {
+    type Single = char;
+    type String<'n> = &'n str;
+  }
+
+  pub struct MultibyteEncoding;
+  impl LiteralEncoding for MultibyteEncoding {
+    /// emacs uses a 22 bit char encoding!
+    type Single = u32;
+    /// However, this is stored in a compressed representation, which may use a
+    /// varying number of bits.
+    type String<'n> = &'n [u8];
+  }
+}
+
+/// stuff to do with the input string provided as the "pattern"
+pub mod pattern {
+  pub trait PatternParser {}
+}
 
 pub mod hir {
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

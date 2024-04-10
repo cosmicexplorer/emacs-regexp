@@ -30,48 +30,20 @@ pub mod literals {
   pub mod single {
     #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
     #[repr(transparent)]
-    pub struct ByteSingleLiteral(pub u8);
-
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    #[repr(transparent)]
-    pub struct UnicodeSingleLiteral(pub char);
-
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    #[repr(transparent)]
-    /* emacs uses a 22 bit char encoding! */
-    pub struct MultibyteSingleLiteral(pub u32);
-
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub enum SingleLiteral {
-      Byte(ByteSingleLiteral),
-      Unicode(UnicodeSingleLiteral),
-      Multibyte(MultibyteSingleLiteral),
-    }
+    pub struct SingleLiteral<LSi>(pub LSi);
 
     pub mod escapes {
       use super::SingleLiteral;
 
       #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-      pub struct Escaped(pub SingleLiteral);
+      pub struct Escaped<LSi>(pub SingleLiteral<LSi>);
     }
   }
 
   pub mod string {
     #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct ByteStringLiteral<'n>(pub &'n [u8]);
-
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct UnicodeStringLiteral<'n>(pub &'n str);
-
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct MultibyteStringLiteral<'n>(pub &'n [u8]);
-
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub enum StringLiteral<'n> {
-      Byte(ByteStringLiteral<'n>),
-      Unicode(UnicodeStringLiteral<'n>),
-      Multibyte(MultibyteStringLiteral<'n>),
-    }
+    #[repr(transparent)]
+    pub struct StringLiteral<LStr>(pub LStr);
   }
 }
 
@@ -122,13 +94,13 @@ pub mod character_alternatives {
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-  pub enum CharAltComponent {
+  pub enum CharAltComponent<LSi> {
     /// a
-    SingleLiteral(SingleLiteral),
+    SingleLiteral(SingleLiteral<LSi>),
     /// a-z
     LiteralRange {
-      left: SingleLiteral,
-      right: SingleLiteral,
+      left: SingleLiteral<LSi>,
+      right: SingleLiteral<LSi>,
     },
     /// [:ascii:]
     Class(CharacterClass),
@@ -144,11 +116,11 @@ pub mod character_alternatives {
 
   /// [a-z0-9] or [^a-z]
   #[derive(Debug, Clone, PartialEq, Eq)]
-  pub struct CharacterAlternative<A>
+  pub struct CharacterAlternative<LSi, A>
   where A: Allocator
   {
     pub complemented: ComplementBehavior,
-    pub components: Vec<CharAltComponent, A>,
+    pub components: Vec<CharAltComponent<LSi>, A>,
   }
 }
 
@@ -326,38 +298,41 @@ pub mod expr {
     literals::{single::escapes::Escaped, string::StringLiteral},
     postfix_operators::PostfixOp,
   };
+  use crate::encoding::LiteralEncoding;
 
   #[derive(Debug, Clone, PartialEq, Eq)]
-  pub enum SingleCharSelector<A>
+  pub enum SingleCharSelector<LSi, A>
   where A: Allocator
   {
     Prop(CharPropertiesSelector),
-    Alt(CharacterAlternative<A>),
-    Esc(Escaped),
+    Alt(CharacterAlternative<LSi, A>),
+    Esc(Escaped<LSi>),
   }
 
   #[derive(Debug, Clone, PartialEq, Eq)]
-  pub enum Expr<'n, A>
-  where A: Allocator
+  pub enum Expr<'n, L, A>
+  where
+    L: LiteralEncoding,
+    A: Allocator,
   {
     /// asdf
-    Literal(StringLiteral<'n>),
+    Literal(StringLiteral<L::String<'n>>),
     /// [a-z] or \w or \s-
-    CharSelector(SingleCharSelector<A>),
+    CharSelector(SingleCharSelector<L::Single, A>),
     /// <expr><op>
     Postfix {
-      inner: Box<Expr<'n, A>, A>,
+      inner: Box<Expr<'n, L, A>, A>,
       op: PostfixOp,
     },
     /// (<expr>)
     Group {
       kind: GroupKind,
-      inner: Box<Expr<'n, A>, A>,
+      inner: Box<Expr<'n, L, A>, A>,
     },
     /// <expr>\|<expr>
     Alternation {
-      left: Box<Expr<'n, A>, A>,
-      right: Box<Expr<'n, A>, A>,
+      left: Box<Expr<'n, L, A>, A>,
+      right: Box<Expr<'n, L, A>, A>,
     },
   }
 }
