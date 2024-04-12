@@ -43,28 +43,45 @@ use core::{
 use ::alloc::{boxed::Box, vec::Vec};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-mod lang_items {
+/// Necessary rust-specific hooks to override when generating an output library.
+pub mod lang_items {
   use core::{alloc::GlobalAlloc, intrinsics::abort, panic::PanicInfo};
 
   use ::alloc::alloc::handle_alloc_error;
 
   use super::Layout;
 
+  /// Even when compiled with `panic="abort"`, we need to define this method
+  /// anyway for some reason to successfully compile this `no_std` crate. If
+  /// this is ever called, it should have the same behavior as `panic="abort"`.
   #[panic_handler]
-  fn panic(_info: &PanicInfo) -> ! { abort() }
+  pub fn panic(_info: &PanicInfo) -> ! { abort() }
 
+  /// This method is called to perform stack unwinding, especially across
+  /// language runtimes, and must be defined for our `librex.so` to link
+  /// correctly. While we might like to be able to make use of rust's structured
+  /// panic control flow features in this library, it would require a lot of
+  /// work to make that portable, so instead we simply ignore/avoid any stack
+  /// unwinding (and this entire crate workspace is compiled with
+  /// `panic="abort"`).
   #[lang = "eh_personality"]
-  fn rust_eh_personality() {}
+  pub fn rust_eh_personality() {}
 
-  struct NoOpAllocator;
+  pub struct ImmediatelyErrorAllocator;
 
-  unsafe impl GlobalAlloc for NoOpAllocator {
+  unsafe impl GlobalAlloc for ImmediatelyErrorAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 { handle_alloc_error(layout) }
     unsafe fn dealloc(&self, _ptr: *mut u8, layout: Layout) { handle_alloc_error(layout) }
   }
 
+  /// We need to provide a #[global_allocator] in order to produce a `no_std`
+  /// binary, but we don't actually want to ever allocate dynamically in this
+  /// crate without using an explicitly provided implementation of
+  /// core::alloc::Allocator. So we provide this implementation which
+  /// immediately panics at runtime if we ever attempt to use the global
+  /// allocator.
   #[global_allocator]
-  static ALLOCATOR: NoOpAllocator = NoOpAllocator;
+  pub static ALLOCATOR: ImmediatelyErrorAllocator = ImmediatelyErrorAllocator;
 }
 
 #[derive(Default, Copy, Clone, IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Hash)]
