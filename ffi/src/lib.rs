@@ -24,6 +24,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(slice_ptr_get)]
 #![feature(core_intrinsics)]
 #![feature(lang_items)]
+#![allow(internal_features)]
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
@@ -32,11 +33,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 extern crate alloc;
 
 use core::{
-  alloc::{AllocError, Allocator, GlobalAlloc, Layout},
+  alloc::{AllocError, Allocator, Layout},
   ffi::c_void,
-  intrinsics::abort,
   mem::{self, MaybeUninit},
-  panic::PanicInfo,
   ptr::{addr_of_mut, NonNull},
   slice,
 };
@@ -44,11 +43,29 @@ use core::{
 use ::alloc::{boxed::Box, vec::Vec};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! { abort() }
+mod lang_items {
+  use core::{alloc::GlobalAlloc, intrinsics::abort, panic::PanicInfo};
 
-#[lang = "eh_personality"]
-fn rust_eh_personality() {}
+  use ::alloc::alloc::handle_alloc_error;
+
+  use super::Layout;
+
+  #[panic_handler]
+  fn panic(_info: &PanicInfo) -> ! { abort() }
+
+  #[lang = "eh_personality"]
+  fn rust_eh_personality() {}
+
+  struct NoOpAllocator;
+
+  unsafe impl GlobalAlloc for NoOpAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 { handle_alloc_error(layout) }
+    unsafe fn dealloc(&self, _ptr: *mut u8, layout: Layout) { handle_alloc_error(layout) }
+  }
+
+  #[global_allocator]
+  static ALLOCATOR: NoOpAllocator = NoOpAllocator;
+}
 
 #[derive(Default, Copy, Clone, IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -94,7 +111,7 @@ impl OwnedSlice {
     let Self { len, data, alloc } = self;
     let p = NonNull::new(data).unwrap();
     let p: NonNull<u8> = unsafe { mem::transmute(p) };
-    let p = unsafe { NonNull::slice_from_raw_parts(p, len) };
+    let p = NonNull::slice_from_raw_parts(p, len);
     unsafe { Box::from_raw_in(mem::transmute(p), alloc) }
   }
 }
@@ -113,7 +130,7 @@ unsafe impl Allocator for CallbackAllocator {
       None => Err(AllocError),
       Some(p) => {
         let p: NonNull<u8> = unsafe { mem::transmute(p) };
-        Ok(unsafe { NonNull::slice_from_raw_parts(p, layout.size()) })
+        Ok(NonNull::slice_from_raw_parts(p, layout.size()))
       },
     }
   }
@@ -133,18 +150,6 @@ pub struct Matcher {
 pub struct Input {
   pub data: ForeignSlice,
 }
-
-struct NoOpAllocator;
-
-unsafe impl GlobalAlloc for NoOpAllocator {
-  unsafe fn alloc(&self, layout: Layout) -> *mut u8 { ::alloc::alloc::handle_alloc_error(layout) }
-  unsafe fn dealloc(&self, _ptr: *mut u8, layout: Layout) {
-    ::alloc::alloc::handle_alloc_error(layout)
-  }
-}
-
-#[global_allocator]
-static ALLOCATOR: NoOpAllocator = NoOpAllocator;
 
 /// asdf
 #[no_mangle]
