@@ -119,14 +119,15 @@ impl OwnedSlice {
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct CallbackAllocator {
-  alloc: Option<fn(usize) -> Option<NonNull<c_void>>>,
-  free: Option<fn(NonNull<c_void>) -> ()>,
+  ctx: Option<NonNull<c_void>>,
+  alloc: Option<fn(Option<NonNull<c_void>>, usize) -> Option<NonNull<c_void>>>,
+  free: Option<fn(Option<NonNull<c_void>>, NonNull<c_void>) -> ()>,
 }
 
 unsafe impl Allocator for CallbackAllocator {
   fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
     assert_eq!(layout.align(), 1);
-    match self.alloc.unwrap()(layout.size()) {
+    match self.alloc.unwrap()(self.ctx, layout.size()) {
       None => Err(AllocError),
       Some(p) => {
         let p: NonNull<u8> = unsafe { mem::transmute(p) };
@@ -137,7 +138,7 @@ unsafe impl Allocator for CallbackAllocator {
 
   unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
     let p: NonNull<c_void> = unsafe { mem::transmute(ptr) };
-    self.free.unwrap()(p);
+    self.free.unwrap()(self.ctx, p);
   }
 }
 

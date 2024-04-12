@@ -4,8 +4,8 @@
 
 #include "rex.h"
 
-void *rex_alloc(size_t n) { return malloc(n); }
-void rex_free(void *p) { free(p); }
+void *rex_alloc(void *_ctx, size_t n) { return malloc(n); }
+void rex_free(void *_ctx, void *p) { free(p); }
 
 int main() {
   ForeignSlice s;
@@ -16,6 +16,7 @@ int main() {
   p.data = s;
 
   CallbackAllocator c;
+  c.ctx = NULL;
   c.alloc = rex_alloc;
   c.free = rex_free;
 
