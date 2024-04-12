@@ -17,8 +17,9 @@ repository              = "https://github.com/cosmicexplorer/emacs-regexp"
 authors                 = ["Danny McClanahan <dmcC2@hypnicjerk.ai>"]
 
 [workspace.dependencies]
+emacs-regexp            = { path = "./" }
 emacs-regexp-syntax     = { path = "./syntax" }
-emacs-regexp-ffi        = { path = "./ffi" }
+# emacs-regexp-ffi        = { path = "./ffi" }
 
 [workspace.lints.clippy]
 len_without_is_empty    = "allow"
@@ -57,8 +58,6 @@ smallvec                = { version = "2.0.0-alpha.4", features = ["specializati
 static_assertions       = "1.1.0"
 # FIXME: hw acceleration for AVX2? https://docs.rs/xxhash-rust/latest/xxhash_rust/#hw-acceleration
 xxhash-rust             = { version = "0.8.10", features = ["xxh3", "const_xxh3"] }
-
-[build-dependencies]
 
 [dev-dependencies]
 

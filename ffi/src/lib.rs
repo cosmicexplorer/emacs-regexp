@@ -21,5 +21,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![deny(unsafe_code)]
 /* Ensure any doctest warnings fails the doctest! */
 #![doc(test(attr(deny(warnings))))]
+#![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(test), no_main)]
 
 //! C ABI interface to expose to C code such as emacs.
+
+extern crate alloc;

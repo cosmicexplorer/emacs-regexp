@@ -12,6 +12,9 @@ name                    = "rex"
 crate-type              = ["cdylib"]
 
 [dependencies]
+emacs-regexp.workspace  = true
+
+[build-dependencies]
 
 [dev-dependencies]
 
