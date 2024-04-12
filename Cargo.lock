@@ -105,6 +105,7 @@ version = "0.0.0"
 dependencies = [
  "cbindgen",
  "emacs-regexp",
+ "num_enum",
 ]
 
 [[package]]
@@ -195,6 +196,26 @@ checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 name = "memchr"
 version = "2.7.1"
 source = "git+https://github.com/cosmicexplorer/memchr?rev=091a2ecbf84614bb215d3ec17acb856a8eca566d#091a2ecbf84614bb215d3ec17acb856a8eca566d"
+
+[[package]]
+name = "num_enum"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02339744ee7253741199f897151b38e72257d13802d4ee837285cc2990a90845"
+dependencies = [
+ "num_enum_derive",
+]
+
+[[package]]
+name = "num_enum_derive"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "681030a937600a36906c185595136d26abfebb4aa9c65701cefcaf8578bb982b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.58",
+]
 
 [[package]]
 name = "os_str_bytes"

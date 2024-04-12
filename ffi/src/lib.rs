@@ -25,13 +25,36 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! C ABI interface to expose to C code such as emacs.
 
-/* extern crate alloc; */
+use core::{mem::MaybeUninit, panic::PanicInfo};
 
-use core::panic::PanicInfo;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! { loop {} }
 
+#[derive(Default, Copy, Clone, IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum RegexpError {
+  #[default]
+  None = 0,
+  CompileError = 1,
+  MatchError = 2,
+}
+
+#[repr(C)]
+pub struct Pattern;
+
+#[repr(C)]
+pub struct Matcher;
+
+#[repr(C)]
+pub struct Input;
+
 /// asdf
 #[no_mangle]
-pub extern "C" fn f() {}
+pub extern "C" fn compile(pattern: &Pattern, out: &mut MaybeUninit<Matcher>) -> RegexpError {
+  RegexpError::None
+}
+
+#[no_mangle]
+pub extern "C" fn execute(matcher: &Matcher, input: &Input) -> RegexpError { RegexpError::None }
