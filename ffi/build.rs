@@ -1,4 +1,4 @@
-/* Description: C ABI interface to expose to C code such as emacs.
+/* Description: ???
 
 Copyright (C) 2024 Danny McClanahan <dmcC2@hypnicjerk.ai>
 SPDX-License-Identifier: GPL-3.0-or-later
@@ -16,22 +16,15 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
-#![warn(rustdoc::missing_crate_level_docs)]
-// #![warn(missing_docs)]
-/* Ensure any doctest warnings fails the doctest! */
-#![doc(test(attr(deny(warnings))))]
-#![cfg_attr(not(test), no_std)]
-#![cfg_attr(not(test), no_main)]
+use std::{env, fs, path::PathBuf};
 
-//! C ABI interface to expose to C code such as emacs.
+fn main() {
+  let crate_dir: PathBuf = env::var("CARGO_MANIFEST_DIR")
+    .expect("CARGO_MANIFEST_DIR not set")
+    .into();
+  assert!(crate_dir.is_dir());
 
-/* extern crate alloc; */
-
-use core::panic::PanicInfo;
-
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! { loop {} }
-
-/// asdf
-#[no_mangle]
-pub extern "C" fn f() {}
+  let bindings = cbindgen::generate(crate_dir).expect("binding generation failed");
+  let _ = fs::remove_file("src/rex.h");
+  assert!(bindings.write_to_file("src/rex.h"));
+}

@@ -36,6 +36,11 @@ used_underscore_binding = "deny"
 collapsible_else_if     = "allow"
 result_large_err        = "allow"
 
+[profile.dev]
+panic                   = "abort"
+[profile.release]
+panic                   = "abort"
+
 [package]
 name                    = "emacs-regexp"
 description             = "Implementation of emacs regexp matching!"
@@ -50,6 +55,7 @@ emacs-regexp-syntax.workspace = true
 # aho-corasick            = "1.1.2"
 hashbrown               = { version = "0.14", default-features = false, features = ["nightly", "inline-more"] }
 # NB: needs to be patched to support parameterized allocator!
+
 # indexmap                = { version = "2.2.6", default-features = false, features = [] }
 # memchr                  = "2.7.1"
 memchr                  = { git = "https://github.com/cosmicexplorer/memchr", rev = "091a2ecbf84614bb215d3ec17acb856a8eca566d" }
