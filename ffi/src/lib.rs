@@ -22,6 +22,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![doc(test(attr(deny(warnings))))]
 #![feature(allocator_api)]
 #![feature(slice_ptr_get)]
+#![feature(core_intrinsics)]
+#![feature(lang_items)]
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
@@ -32,6 +34,7 @@ extern crate alloc;
 use core::{
   alloc::{AllocError, Allocator, GlobalAlloc, Layout},
   ffi::c_void,
+  intrinsics::abort,
   mem::{self, MaybeUninit},
   panic::PanicInfo,
   ptr::{addr_of_mut, NonNull},
@@ -42,7 +45,10 @@ use ::alloc::{boxed::Box, vec::Vec};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 #[panic_handler]
-fn panic(info: &PanicInfo) -> ! { loop {} }
+fn panic(info: &PanicInfo) -> ! { abort() }
+
+#[lang = "eh_personality"]
+fn rust_eh_personality() {}
 
 #[derive(Default, Copy, Clone, IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Hash)]
 #[repr(u8)]
