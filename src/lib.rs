@@ -30,6 +30,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(slice_as_chunks)]
 #![feature(maybe_uninit_uninit_array)]
 #![feature(maybe_uninit_array_assume_init)]
+#![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(test), no_main)]
+
+extern crate alloc;
 
 pub mod filters;
 pub mod hashgrams;

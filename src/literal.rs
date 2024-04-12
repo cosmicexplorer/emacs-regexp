@@ -20,6 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{alloc::Allocator, mem};
 
+use ::alloc::vec::Vec;
 use hashbrown::HashTable;
 use xxhash_rust::xxh3::xxh3_64;
 

@@ -45,7 +45,7 @@ repository.workspace    = true
 authors.workspace       = true
 
 [dependencies]
-# emacs-regexp-syntax.workspace = true
+emacs-regexp-syntax.workspace = true
 # aho-corasick            = "1.1.2"
 hashbrown               = { version = "0.14", default-features = false, features = ["nightly", "inline-more"] }
 indexmap                = { version = "2.2.6", default-features = false, features = [] }

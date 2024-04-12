@@ -23,6 +23,7 @@ use core::{
   hash::{BuildHasherDefault, Hash},
 };
 
+use ::alloc::vec::Vec;
 use hashbrown::HashMap;
 use rustc_hash::FxHasher;
 
