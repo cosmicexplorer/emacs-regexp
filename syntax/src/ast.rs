@@ -44,6 +44,8 @@ pub mod literals {
 pub mod character_alternatives {
   use core::alloc::Allocator;
 
+  use ::alloc::vec::Vec;
+
   use super::literals::single::SingleLiteral;
 
   /// https://www.gnu.org/software/emacs/manual/html_node/elisp/Char-Classes.html#Char-Classes
@@ -310,6 +312,8 @@ pub mod char_properties {
 /// https://www.gnu.org/software/emacs/manual/html_node/emacs/Regexps.html
 pub mod expr {
   use core::alloc::Allocator;
+
+  use ::alloc::{boxed::Box, vec::Vec};
 
   use super::{
     anchors::Anchor,

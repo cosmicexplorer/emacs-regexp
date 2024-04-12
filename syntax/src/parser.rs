@@ -20,6 +20,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{alloc::Allocator, mem, num::NonZeroUsize, str};
 
+use ::alloc::{boxed::Box, vec::Vec};
+
 use crate::{
   ast::{
     anchors::{Anchor, EndAnchor, PointAnchor, StartAnchor, WordAnchor},
