@@ -191,15 +191,15 @@ pub mod objects {
   #[repr(C)]
   pub struct CallbackAllocator {
     ctx: Option<NonNull<c_void>>,
-    alloc: Option<fn(Option<NonNull<c_void>>, usize) -> Option<NonNull<c_void>>>,
-    free: Option<fn(Option<NonNull<c_void>>, NonNull<c_void>) -> ()>,
+    alloc: Option<unsafe extern "C" fn(Option<NonNull<c_void>>, usize) -> Option<NonNull<c_void>>>,
+    free: Option<unsafe extern "C" fn(Option<NonNull<c_void>>, NonNull<c_void>) -> ()>,
   }
 
   unsafe impl Allocator for CallbackAllocator {
     #[inline(always)]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
       assert_eq!(layout.align(), 1);
-      match self.alloc.unwrap()(self.ctx, layout.size()) {
+      match unsafe { self.alloc.unwrap()(self.ctx, layout.size()) } {
         None => Err(AllocError),
         Some(p) => {
           let p: NonNull<u8> = unsafe { mem::transmute(p) };
@@ -210,7 +210,7 @@ pub mod objects {
 
     #[inline(always)]
     unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
-      let p: NonNull<c_void> = unsafe { mem::transmute(ptr) };
+      let p: NonNull<c_void> = mem::transmute(ptr);
       self.free.unwrap()(self.ctx, p);
     }
   }
