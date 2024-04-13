@@ -92,6 +92,7 @@ pub mod objects {
   use emacs_regexp::syntax::{ast::expr::Expr, encoding::ByteEncoding};
 
   #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+  #[must_use]
   #[repr(u8)]
   pub enum RegexpError {
     #[default]
@@ -324,6 +325,7 @@ pub mod methods {
   };
 
   /// asdf
+  #[must_use]
   #[no_mangle]
   pub extern "C" fn compile(
     pattern: &Pattern,
@@ -353,6 +355,7 @@ pub mod methods {
     })
   }
 
+  #[must_use]
   #[no_mangle]
   pub extern "C" fn execute(
     matcher: &Matcher,

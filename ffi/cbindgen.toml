@@ -7,6 +7,7 @@ documentation           = true
 language                = "C"
 cpp_compat              = false
 usize_is_size_t         = true
+style                   = "both"
 no_includes             = true
 sys_includes            = ["stdbool.h", "stddef.h", "stdint.h"]
 includes                = []
@@ -22,5 +23,10 @@ deprecated              = "__attribute__((deprecated))"
 derive_constructor      = true
 
 [enum]
+# FIXME: this does not appear to work at all?
 must_use                = "__attribute__((warn_unused))"
 deprecated              = "__attribute__((deprecated))"
+
+[ptr]
+# TODO: this works in clang, but gcc has no equivalent!
+# non_null_attribute      = "_Nonnull"
