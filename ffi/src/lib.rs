@@ -407,4 +407,14 @@ mod test {
     let i2 = Input { data: s2 };
     assert_eq!(execute(&m, &c, &i2), RegexpError::MatchError);
   }
+
+  #[test]
+  fn parse_error() {
+    let s = ForeignSlice::from_data(b"as\\)");
+    let p = Pattern { data: s };
+    let c = CallbackAllocator::new(None, Some(rex_alloc), Some(rex_free));
+
+    let mut m: MaybeUninit<Matcher> = MaybeUninit::uninit();
+    assert_eq!(compile(&p, &c, &mut m), RegexpError::ParseError);
+  }
 }
