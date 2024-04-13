@@ -20,6 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{alloc::Allocator, mem, num::NonZeroUsize, str};
 
+#[cfg(not(test))]
 use ::alloc::{boxed::Box, vec::Vec};
 
 use crate::{
@@ -40,7 +41,7 @@ use crate::{
     },
     Negation,
   },
-  encoding::{ByteEncoding, LiteralEncoding},
+  encoding::ByteEncoding,
 };
 
 
@@ -886,7 +887,6 @@ mod test {
   use std::alloc::System;
 
   use super::*;
-  use crate::encoding::ByteEncoding;
 
   #[test]
   fn parse_lit() {

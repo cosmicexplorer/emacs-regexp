@@ -25,7 +25,7 @@ pub enum Negation {
   Negated,
 }
 
-/// https://www.gnu.org/software/emacs/manual/html_node/elisp/Non_002dASCII-Characters.html
+/// See <https://www.gnu.org/software/emacs/manual/html_node/elisp/Non_002dASCII-Characters.html>.
 pub mod literals {
   pub mod single {
     #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -44,59 +44,60 @@ pub mod literals {
 pub mod character_alternatives {
   use core::{alloc::Allocator, fmt};
 
+  #[cfg(not(test))]
   use ::alloc::vec::Vec;
 
   use super::literals::single::SingleLiteral;
 
-  /// https://www.gnu.org/software/emacs/manual/html_node/elisp/Char-Classes.html#Char-Classes
+  /// See <https://www.gnu.org/software/emacs/manual/html_node/elisp/Char-Classes.html#Char-Classes>.
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub enum CharacterClass {
-    /// [:ascii:]
+    /// `[:ascii:]`
     ASCII,
-    /// [:nonascii:]
+    /// `[:nonascii:]`
     NonASCII,
-    /// [:alnum:]
+    /// `[:alnum:]`
     AlNum,
-    /// [:alpha:]
+    /// `[:alpha:]`
     Alpha,
-    /// [:blank:]
+    /// `[:blank:]`
     Blank, /* horizontal whitespace */
-    /// [:space:]
+    /// `[:space:]`
     Whitespace, /* syntax table! */
-    /// [:cntrl:]
+    /// `[:cntrl:]`
     Control,
-    /// [:digit:]
+    /// `[:digit:]`
     Digit,
-    /// [:xdigit:]
+    /// `[:xdigit:]`
     HexDigit,
-    /// [:print:]
+    /// `[:print:]`
     Printing,
-    /// [:graph:]
+    /// `[:graph:]`
     Graphic,
-    /// [:lower:]
+    /// `[:lower:]`
     LowerCase,
-    /// [:upper:]
+    /// `[:upper:]`
     UpperCase,
-    /// [:unibyte:]
+    /// `[:unibyte:]`
     Unibyte,
-    /// [:multibyte:]
+    /// `[:multibyte:]`
     Multibyte,
-    /// [:word:]
+    /// `[:word:]`
     Word, /* syntax table! */
-    /// [:punct:]
+    /// `[:punct:]`
     Punctuation, /* syntax table! */
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub enum CharAltComponent<LSi> {
-    /// a
+    /// `a`
     SingleLiteral(SingleLiteral<LSi>),
-    /// a-z
+    /// `a-z`
     LiteralRange {
       left: SingleLiteral<LSi>,
       right: SingleLiteral<LSi>,
     },
-    /// [:ascii:]
+    /// `[:ascii:]`
     Class(CharacterClass),
   }
 
@@ -108,7 +109,7 @@ pub mod character_alternatives {
     Complemented,
   }
 
-  /// [a-z0-9] or [^a-z]
+  /// `[a-z0-9]` or `[^a-z]`
   #[derive(Clone)]
   pub struct CharacterAlternative<LSi, A>
   where A: Allocator
@@ -264,21 +265,21 @@ pub mod groups {
 
   #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub enum GroupKind {
-    /// \(...\)
+    /// `\(...\)`
     Basic,
-    /// \(?:...\)
+    /// `\(?:...\)`
     #[default]
     Shy,
-    /// \(?<num>:...\)
+    /// `\(?<num>:...\)`
     ExplicitlyNumbered(ExplicitGroupIndex),
   }
 
-  /// 1..=9
+  /// `1..=9`
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
   pub struct BackrefIndex(pub u8);
 
-  /// \1 -> \9
+  /// `\1 -> \9`
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
   pub struct Backref(pub BackrefIndex);
@@ -287,7 +288,7 @@ pub mod groups {
 pub mod char_properties {
   use super::Negation;
 
-  /// \w or \W (negated)
+  /// `\w` or `\W` *(negated)*
   #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
   pub struct WordChar {
@@ -298,7 +299,7 @@ pub mod char_properties {
   #[repr(transparent)]
   pub struct SyntaxCode(pub u8);
 
-  /// \s<code> or \S<code> (negated)
+  /// `\s<code>` or `\S<code>` *(negated)*
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub struct SyntaxChar {
     pub code: SyntaxCode,
@@ -309,7 +310,7 @@ pub mod char_properties {
   #[repr(transparent)]
   pub struct CategoryCode(pub u8);
 
-  /// \c<code> or \C<code> (negated)
+  /// `\c<code>` or `\C<code>` *(negated)*
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub struct CategoryChar {
     pub code: CategoryCode,
@@ -324,10 +325,11 @@ pub mod char_properties {
   }
 }
 
-/// https://www.gnu.org/software/emacs/manual/html_node/emacs/Regexps.html
+/// See <https://www.gnu.org/software/emacs/manual/html_node/emacs/Regexps.html>.
 pub mod expr {
   use core::{alloc::Allocator, fmt};
 
+  #[cfg(not(test))]
   use ::alloc::{boxed::Box, vec::Vec};
 
   use super::{
@@ -394,29 +396,29 @@ pub mod expr {
     L: LiteralEncoding,
     A: Allocator,
   {
-    /// a
+    /// `a`
     SingleLiteral(SingleLiteral<L::Single>),
-    /// \\ or \+
+    /// `\\` or `\+`
     EscapedLiteral(Escaped<L::Single>),
-    /// \\1-9
+    /// `\<1-9>`
     Backref(Backref),
-    /// ^ or $
+    /// `^` or `$`
     Anchor(Anchor),
-    /// [a-z] or \w or \s-
+    /// `[a-z]` or `\w` or `\s-`
     CharSelector(SingleCharSelector<L::Single, A>),
-    /// <expr><op>
+    /// `<expr><op>`
     Postfix {
       inner: Box<Expr<L, A>, A>,
       op: PostfixOp,
     },
-    /// (<expr>)
+    /// `(<expr>)`
     Group {
       kind: GroupKind,
       inner: Box<Expr<L, A>, A>,
     },
-    /// <expr>\|<expr>
+    /// `<expr>\|<expr>`
     Alternation { cases: Vec<Box<Expr<L, A>, A>, A> },
-    /// <expr><expr>
+    /// `<expr><expr>`
     Concatenation {
       components: Vec<Box<Expr<L, A>, A>, A>,
     },

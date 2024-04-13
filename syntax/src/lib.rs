@@ -36,7 +36,7 @@ pub mod parser;
 pub mod encoding {
   use core::hash::Hash;
 
-  trait LiteralRequirements = Eq+Ord+Clone+Hash;
+  pub trait LiteralRequirements = Eq+Ord+Clone+Hash;
 
   pub trait LiteralEncoding {
     type Single: LiteralRequirements+Copy;
@@ -66,28 +66,6 @@ pub mod encoding {
 }
 
 /// stuff to do with the input string provided as the "pattern"
-pub mod pattern {}
-
-pub mod hir {
-  #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-  pub enum EscapeKind {
-    /// A backslash escape applied to what would otherwise be interpreted as
-    /// a regex meta-character, e.g. `\*` or `\[`.
-    Meta,
-    /// A backslash escape applied to a character which has no special
-    /// interpretation and is therefore equivalent to the unescaped
-    /// character, e.g. `\%` or `\/`.
-    Superfluous,
-  }
-}
-
-#[cfg(test)]
-mod test {
-  use super::*;
-
-  #[test]
-  fn literal() {
-    let s = "asdf";
-    assert_eq!(s, "asdf");
-  }
+pub mod pattern {
+  /* TODO: ??? */
 }
