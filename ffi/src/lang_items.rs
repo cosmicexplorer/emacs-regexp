@@ -90,7 +90,7 @@ mod libc_backend {
     }
   }
 
-  fn write_bytes(s: &[u8]) -> ! {
+  fn abort_after_writing(s: &[u8]) -> ! {
     unsafe {
       /* In case the first time returns without blocking, try again (do not try
        * again upon error or success). */
@@ -105,7 +105,7 @@ mod libc_backend {
       Some(w) => w,
       None => {
         let s = "could not allocate any memory!\n".as_bytes();
-        write_bytes(s)
+        abort_after_writing(s)
       },
     };
 
@@ -130,7 +130,7 @@ mod libc_backend {
     let _ = w.write_char('\n');
 
     let s = w.data();
-    write_bytes(s)
+    abort_after_writing(s)
   }
 }
 
