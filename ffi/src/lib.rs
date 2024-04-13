@@ -404,6 +404,8 @@ mod test {
     let mut m: MaybeUninit<Matcher> = MaybeUninit::uninit();
     assert_eq!(compile(&p, &c, &mut m), RegexpError::None);
     let m = unsafe { m.assume_init() };
+    let ast = format!("{:?}", m.expr.expr());
+    assert_eq!(ast, "Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] }");
 
     let i = Input { data: s };
     assert_eq!(execute(&m, &c, &i), RegexpError::None);
@@ -415,6 +417,7 @@ mod test {
 
   #[test]
   fn parse_error() {
+    /* This fails because it has a close group without any open group. */
     let s = ForeignSlice::from_data(b"as\\)");
     let p = Pattern { data: s };
     let c = CallbackAllocator::new(None, Some(rex_alloc), Some(rex_free));
