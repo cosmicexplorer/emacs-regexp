@@ -32,24 +32,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 extern crate alloc;
 
-use core::{
-  alloc::{AllocError, Allocator, Layout},
-  ffi::c_void,
-  mem::{self, MaybeUninit},
-  ptr::{addr_of_mut, NonNull},
-  slice,
-};
-
-use ::alloc::{boxed::Box, vec::Vec};
-use num_enum::{IntoPrimitive, TryFromPrimitive};
-
 /// Necessary rust-specific hooks to override when generating an output library.
 pub mod lang_items {
-  use core::{alloc::GlobalAlloc, intrinsics::abort, panic::PanicInfo};
+  use core::{
+    alloc::{GlobalAlloc, Layout},
+    intrinsics::abort,
+    panic::PanicInfo,
+  };
 
   use ::alloc::alloc::handle_alloc_error;
-
-  use super::Layout;
 
   /// Even when compiled with `panic="abort"`, we need to define this method
   /// anyway for some reason to successfully compile this `no_std` crate. If
@@ -84,148 +75,174 @@ pub mod lang_items {
   pub static ALLOCATOR: ImmediatelyErrorAllocator = ImmediatelyErrorAllocator;
 }
 
-#[derive(Default, Debug, Copy, Clone, IntoPrimitive, TryFromPrimitive, PartialEq, Eq)]
-#[repr(u8)]
-pub enum RegexpError {
-  #[default]
-  None = 0,
-  CompileError = 1,
-  MatchError = 2,
-}
+pub mod objects {
+  use core::{
+    alloc::{AllocError, Allocator, Layout},
+    ffi::c_void,
+    mem,
+    ptr::NonNull,
+    slice,
+  };
 
-impl RegexpError {
-  #[inline(always)]
-  pub fn wrap(f: impl FnOnce() -> Result<(), Self>) -> Self {
-    match f() {
-      Ok(()) => Self::None,
-      Err(e) => {
-        assert_ne!(
-          e,
-          Self::None,
-          "regexp error of none was provided: this is a logic error"
-        );
-        e
-      },
-    }
-  }
-}
+  use ::alloc::{boxed::Box, vec::Vec};
+  use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-#[repr(C)]
-pub struct ForeignSlice {
-  len: usize,
-  data: *const c_void,
-}
-
-impl ForeignSlice {
-  pub unsafe fn data(&self) -> &[u8] {
-    let source: *const u8 = mem::transmute(self.data);
-    slice::from_raw_parts(source, self.len)
-  }
-}
-
-#[repr(C)]
-pub struct Pattern {
-  pub data: ForeignSlice,
-}
-
-#[repr(C)]
-pub struct OwnedSlice {
-  len: usize,
-  data: *mut c_void,
-  alloc: CallbackAllocator,
-}
-
-impl OwnedSlice {
-  pub fn data(&self) -> &[u8] {
-    let source: *const u8 = unsafe { mem::transmute(self.data) };
-    unsafe { slice::from_raw_parts(source, self.len) }
+  #[derive(Default, Debug, Copy, Clone, IntoPrimitive, TryFromPrimitive, PartialEq, Eq)]
+  #[repr(u8)]
+  pub enum RegexpError {
+    #[default]
+    None = 0,
+    CompileError = 1,
+    MatchError = 2,
   }
 
-  pub fn box_data(self) -> Box<[u8], CallbackAllocator> {
-    let Self { len, data, alloc } = self;
-    let p = NonNull::new(data).unwrap();
-    let p: NonNull<u8> = unsafe { mem::transmute(p) };
-    let p = NonNull::slice_from_raw_parts(p, len);
-    unsafe { Box::from_raw_in(mem::transmute(p), alloc) }
-  }
-}
-
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct CallbackAllocator {
-  ctx: Option<NonNull<c_void>>,
-  alloc: Option<fn(Option<NonNull<c_void>>, usize) -> Option<NonNull<c_void>>>,
-  free: Option<fn(Option<NonNull<c_void>>, NonNull<c_void>) -> ()>,
-}
-
-unsafe impl Allocator for CallbackAllocator {
-  fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-    assert_eq!(layout.align(), 1);
-    match self.alloc.unwrap()(self.ctx, layout.size()) {
-      None => Err(AllocError),
-      Some(p) => {
-        let p: NonNull<u8> = unsafe { mem::transmute(p) };
-        Ok(NonNull::slice_from_raw_parts(p, layout.size()))
-      },
+  impl RegexpError {
+    #[inline(always)]
+    pub fn wrap(f: impl FnOnce() -> Result<(), Self>) -> Self {
+      match f() {
+        Ok(()) => Self::None,
+        Err(e) => {
+          assert_ne!(
+            e,
+            Self::None,
+            "regexp error of none was provided: this is a logic error"
+          );
+          e
+        },
+      }
     }
   }
 
-  unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
-    let p: NonNull<c_void> = unsafe { mem::transmute(ptr) };
-    self.free.unwrap()(self.ctx, p);
+  #[repr(C)]
+  pub struct ForeignSlice {
+    len: usize,
+    data: *const c_void,
+  }
+
+  impl ForeignSlice {
+    pub unsafe fn data(&self) -> &[u8] {
+      let source: *const u8 = mem::transmute(self.data);
+      slice::from_raw_parts(source, self.len)
+    }
+  }
+
+  #[repr(C)]
+  pub struct Pattern {
+    pub data: ForeignSlice,
+  }
+
+  #[repr(C)]
+  pub struct OwnedSlice {
+    len: usize,
+    data: *mut c_void,
+    alloc: CallbackAllocator,
+  }
+
+  impl OwnedSlice {
+    #[inline(always)]
+    pub const fn new(len: usize, data: *mut c_void, alloc: CallbackAllocator) -> Self {
+      Self { len, data, alloc }
+    }
+
+    #[inline(always)]
+    pub fn data(&self) -> &[u8] {
+      let source: *const u8 = unsafe { mem::transmute(self.data) };
+      unsafe { slice::from_raw_parts(source, self.len) }
+    }
+
+    pub fn box_data(self) -> Box<[u8], CallbackAllocator> {
+      let Self { len, data, alloc } = self;
+      let p = NonNull::new(data).unwrap();
+      let p: NonNull<u8> = unsafe { mem::transmute(p) };
+      let p = NonNull::slice_from_raw_parts(p, len);
+      unsafe { Box::from_raw_in(mem::transmute(p), alloc) }
+    }
+  }
+
+  #[derive(Copy, Clone)]
+  #[repr(C)]
+  pub struct CallbackAllocator {
+    ctx: Option<NonNull<c_void>>,
+    alloc: Option<fn(Option<NonNull<c_void>>, usize) -> Option<NonNull<c_void>>>,
+    free: Option<fn(Option<NonNull<c_void>>, NonNull<c_void>) -> ()>,
+  }
+
+  unsafe impl Allocator for CallbackAllocator {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+      assert_eq!(layout.align(), 1);
+      match self.alloc.unwrap()(self.ctx, layout.size()) {
+        None => Err(AllocError),
+        Some(p) => {
+          let p: NonNull<u8> = unsafe { mem::transmute(p) };
+          Ok(NonNull::slice_from_raw_parts(p, layout.size()))
+        },
+      }
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
+      let p: NonNull<c_void> = unsafe { mem::transmute(ptr) };
+      self.free.unwrap()(self.ctx, p);
+    }
+  }
+
+  #[repr(C)]
+  pub struct Matcher {
+    pub data: OwnedSlice,
+  }
+
+  #[repr(C)]
+  pub struct Input {
+    pub data: ForeignSlice,
   }
 }
 
-#[repr(C)]
-pub struct Matcher {
-  pub data: OwnedSlice,
-}
+pub mod methods {
+  use core::{
+    mem::{self, MaybeUninit},
+    ptr::addr_of_mut,
+  };
 
-#[repr(C)]
-pub struct Input {
-  pub data: ForeignSlice,
-}
+  use ::alloc::{boxed::Box, vec::Vec};
 
-/// asdf
-#[no_mangle]
-pub extern "C" fn compile(
-  pattern: &Pattern,
-  alloc: &CallbackAllocator,
-  out: &mut MaybeUninit<Matcher>,
-) -> RegexpError {
-  RegexpError::wrap(|| {
-    let p = unsafe { pattern.data.data() };
+  use super::objects::{CallbackAllocator, Input, Matcher, OwnedSlice, Pattern, RegexpError};
 
-    let mut d: Vec<u8, CallbackAllocator> = Vec::with_capacity_in(p.len(), *alloc);
-    d.extend_from_slice(p);
-    let d = d.into_boxed_slice();
-    let (d, alloc) = Box::into_raw_with_allocator(d);
-    let d = OwnedSlice {
-      len: p.len(),
-      data: unsafe { mem::transmute(d.as_mut_ptr()) },
-      alloc,
-    };
+  /// asdf
+  #[no_mangle]
+  pub extern "C" fn compile(
+    pattern: &Pattern,
+    alloc: &CallbackAllocator,
+    out: &mut MaybeUninit<Matcher>,
+  ) -> RegexpError {
+    RegexpError::wrap(|| {
+      let p = unsafe { pattern.data.data() };
 
-    let out_d = unsafe { addr_of_mut!((*out.as_mut_ptr()).data) };
-    unsafe { out_d.write(d) };
-    Ok(())
-  })
-}
+      let mut d: Vec<u8, CallbackAllocator> = Vec::with_capacity_in(p.len(), *alloc);
+      d.extend_from_slice(p);
+      let d = d.into_boxed_slice();
+      let (d, alloc) = Box::into_raw_with_allocator(d);
+      let d = OwnedSlice::new(p.len(), unsafe { mem::transmute(d.as_mut_ptr()) }, alloc);
 
-#[no_mangle]
-pub extern "C" fn execute(
-  matcher: &Matcher,
-  alloc: &CallbackAllocator,
-  input: &Input,
-) -> RegexpError {
-  RegexpError::wrap(|| {
-    let i = unsafe { input.data.data() };
-    let d = matcher.data.data();
-
-    if i == d {
+      let out_d = unsafe { addr_of_mut!((*out.as_mut_ptr()).data) };
+      unsafe { out_d.write(d) };
       Ok(())
-    } else {
-      Err(RegexpError::MatchError)
-    }
-  })
+    })
+  }
+
+  #[no_mangle]
+  pub extern "C" fn execute(
+    matcher: &Matcher,
+    alloc: &CallbackAllocator,
+    input: &Input,
+  ) -> RegexpError {
+    RegexpError::wrap(|| {
+      let i = unsafe { input.data.data() };
+      let d = matcher.data.data();
+
+      if i == d {
+        Ok(())
+      } else {
+        Err(RegexpError::MatchError)
+      }
+    })
+  }
 }
