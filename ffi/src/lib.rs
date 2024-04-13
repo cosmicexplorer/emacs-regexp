@@ -209,7 +209,8 @@ pub mod objects {
     }
 
     #[inline(always)]
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+      assert_eq!(layout.align(), 1);
       let p: NonNull<c_void> = mem::transmute(ptr);
       self.free.unwrap()(self.ctx, p);
     }
