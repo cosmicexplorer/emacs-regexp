@@ -90,44 +90,47 @@ mod libc_backend {
     }
   }
 
+  fn write_bytes(s: &[u8]) -> ! {
+    unsafe {
+      /* In case the first time returns without blocking, try again (do not try
+       * again upon error or success). */
+      while libc::write(libc::STDERR_FILENO, mem::transmute(s.as_ptr()), s.len()) == 0 {}
+      libc::abort()
+    }
+  }
+
   pub fn do_panic(info: &PanicInfo) -> ! {
     const MSG_ALLOC_LEN: usize = 4096;
-    {
-      let mut w = match CallocWriter::calloc_for_len(MSG_ALLOC_LEN) {
-        Some(w) => w,
-        None => {
-          let s = "could not allocate any memory!\n".as_bytes();
-          unsafe {
-            while libc::write(libc::STDERR_FILENO, mem::transmute(s.as_ptr()), s.len()) == 0 {}
-            libc::abort()
-          }
-        },
-      };
+    let mut w = match CallocWriter::calloc_for_len(MSG_ALLOC_LEN) {
+      Some(w) => w,
+      None => {
+        let s = "could not allocate any memory!\n".as_bytes();
+        write_bytes(s)
+      },
+    };
 
-      if let Some(loc) = info.location() {
-        let mut f = fmt::Formatter::new(&mut w);
-        let _ = fmt::Display::fmt(loc, &mut f);
-        let _ = w.write_str(": ");
-      } else {
-        let _ = w.write_str("<location unknown>: ");
-      }
-
-      if let Some(args) = info.message() {
-        let _ = fmt::write(&mut w, *args);
-      } else {
-        let payload = info
-          .payload()
-          .downcast_ref::<&str>()
-          .map(|s| *s)
-          .unwrap_or("<could not parse panic payload>");
-        let _ = w.write_str(payload);
-      }
-      let _ = w.write_char('\n');
-
-      let s = w.data();
-      unsafe { while libc::write(libc::STDERR_FILENO, mem::transmute(s.as_ptr()), s.len()) == 0 {} }
+    if let Some(loc) = info.location() {
+      let mut f = fmt::Formatter::new(&mut w);
+      let _ = fmt::Display::fmt(loc, &mut f);
+      let _ = w.write_str(": ");
+    } else {
+      let _ = w.write_str("<location unknown>: ");
     }
-    unsafe { libc::abort() }
+
+    if let Some(args) = info.message() {
+      let _ = fmt::write(&mut w, *args);
+    } else {
+      let payload = info
+        .payload()
+        .downcast_ref::<&str>()
+        .map(|s| *s)
+        .unwrap_or("<could not parse panic payload>");
+      let _ = w.write_str(payload);
+    }
+    let _ = w.write_char('\n');
+
+    let s = w.data();
+    write_bytes(s)
   }
 }
 
