@@ -13,7 +13,7 @@ crate-type              = ["cdylib"]
 
 [dependencies]
 emacs-regexp.workspace  = true
-num_enum                = { version =  "0.7.2", default-features = false, features = [] }
+# num_enum                = { version =  "0.7.2", default-features = false, features = [] }
 
 [build-dependencies]
 cbindgen                = "0.26.0"

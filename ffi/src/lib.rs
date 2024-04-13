@@ -34,6 +34,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 extern crate alloc;
 
 /// Necessary rust-specific hooks to override when generating an output library.
+#[cfg(not(test))]
 pub mod lang_items {
   use core::{
     alloc::{GlobalAlloc, Layout},
@@ -59,6 +60,7 @@ pub mod lang_items {
   #[lang = "eh_personality"]
   pub fn rust_eh_personality() {}
 
+  /// Empty struct to do nothing and immediately error. See [`ALLOCATOR`].
   pub struct ImmediatelyErrorAllocator;
 
   unsafe impl GlobalAlloc for ImmediatelyErrorAllocator {
@@ -66,10 +68,10 @@ pub mod lang_items {
     unsafe fn dealloc(&self, _ptr: *mut u8, layout: Layout) { handle_alloc_error(layout) }
   }
 
-  /// We need to provide a #[global_allocator] in order to produce a `no_std`
+  /// We need to provide a `#[global_allocator]` in order to produce a `no_std`
   /// binary, but we don't actually want to ever allocate dynamically in this
   /// crate without using an explicitly provided implementation of
-  /// core::alloc::Allocator. So we provide this implementation which
+  /// [`core::alloc::Allocator`]. So we provide this implementation which
   /// immediately panics at runtime if we ever attempt to use the global
   /// allocator.
   #[global_allocator]
@@ -86,9 +88,8 @@ pub mod objects {
   };
 
   use ::alloc::boxed::Box;
-  use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-  #[derive(Default, Debug, Copy, Clone, IntoPrimitive, TryFromPrimitive, PartialEq, Eq)]
+  #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
   #[repr(u8)]
   pub enum RegexpError {
     #[default]

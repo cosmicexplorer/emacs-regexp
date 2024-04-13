@@ -86,7 +86,7 @@ where
   A: Allocator,
 {
   let expr = match component {
-    ContextComponent::SingleLiteral(SingleLiteral(c)) => Expr::SingleLiteral(c),
+    ContextComponent::SingleLiteral(c) => Expr::SingleLiteral(c),
     ContextComponent::EscapedLiteral(c) => Expr::EscapedLiteral(c),
     ContextComponent::Backref(b) => Expr::Backref(b),
     ContextComponent::Anchor(a) => Expr::Anchor(a),
@@ -132,7 +132,7 @@ where
         prev_alt_cases.push(new_case);
         continue;
       },
-      ContextComponent::SingleLiteral(SingleLiteral(c)) => Expr::SingleLiteral(c),
+      ContextComponent::SingleLiteral(c) => Expr::SingleLiteral(c),
       ContextComponent::EscapedLiteral(c) => Expr::EscapedLiteral(c),
       ContextComponent::Backref(b) => Expr::Backref(b),
       ContextComponent::Anchor(a) => Expr::Anchor(a),
@@ -891,7 +891,7 @@ mod test {
   #[test]
   fn parse_lit() {
     let parsed = parse_bytes(b"a", System).unwrap();
-    assert!(parsed == Expr::<ByteEncoding, System>::SingleLiteral(b'a'));
+    assert!(parsed == Expr::<ByteEncoding, System>::SingleLiteral(SingleLiteral(b'a')));
 
     let parsed = parse_bytes(b"\\a", System).unwrap();
     assert!(parsed == Expr::<ByteEncoding, System>::EscapedLiteral(Escaped(SingleLiteral(b'a'))));

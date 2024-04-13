@@ -366,7 +366,7 @@ pub mod expr {
     A: Allocator,
   {
     /// a
-    SingleLiteral(L::Single),
+    SingleLiteral(SingleLiteral<L::Single>),
     /// \\ or \+
     EscapedLiteral(Escaped<L::Single>),
     /// \\1-9
