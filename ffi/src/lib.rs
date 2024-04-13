@@ -34,6 +34,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 extern crate alloc;
 
+/// cbindgen:ignore
 #[cfg(not(test))]
 pub mod lang_items;
 

@@ -15,9 +15,6 @@ crate-type              = ["cdylib"]
 emacs-regexp.workspace  = true
 # num_enum                = { version =  "0.7.2", default-features = false, features = [] }
 
-[build-dependencies]
-cbindgen                = "0.26.0"
-
 [dev-dependencies]
 libc                    = "0.2.153"
 

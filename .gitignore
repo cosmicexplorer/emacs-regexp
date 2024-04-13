@@ -1,1 +1,4 @@
 target/
+/make-target/
+ffi/src/rex.h
+*.test-exe

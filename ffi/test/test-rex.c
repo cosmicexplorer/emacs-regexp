@@ -20,17 +20,13 @@ int main() {
   c.alloc = rex_alloc;
   c.free = rex_free;
 
-  printf("%s\n", "1!");
-
   Matcher m;
   assert(compile(&p, &c, &m) == None);
-  printf("%s\n", "2!");
 
   Input i;
   i.data = s;
 
   assert(execute(&m, &c, &i) == None);
-  printf("%s\n", "3!");
 
   ForeignSlice s2;
   s2.len = 4;
@@ -40,5 +36,5 @@ int main() {
 
   assert(execute(&m, &c, &i2) == MatchError);
 
-  printf("%s\n", "wow!");
+  printf("%s\n", "success!");
 }
