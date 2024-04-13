@@ -37,6 +37,7 @@ mod libc_backend {
 
   use super::PanicInfo;
 
+  /// Mutable writable object that impls [`fmt::Write`].
   struct CallocWriter {
     src: NonNull<u8>,
     len: usize,
@@ -44,6 +45,7 @@ mod libc_backend {
   }
 
   impl CallocWriter {
+    /// Call [`libc::calloc()`] to allocate some zeroed memory.
     pub fn calloc_for_len(len: usize) -> Option<Self> {
       let p: *mut u8 = unsafe { mem::transmute(libc::calloc(len, mem::size_of::<u8>())) };
       Some(Self {
