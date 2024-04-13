@@ -121,6 +121,7 @@ pub mod objects {
   }
 
   impl ForeignSlice {
+    #[inline(always)]
     pub unsafe fn data(&self) -> &[u8] {
       let source: *const u8 = mem::transmute(self.data);
       slice::from_raw_parts(source, self.len)
@@ -239,12 +240,13 @@ pub mod methods {
     alloc: &CallbackAllocator,
     out: &mut MaybeUninit<Matcher>,
   ) -> RegexpError {
-    RegexpError::wrap(|| {
+    let alloc = *alloc;
+    let out_d = unsafe { addr_of_mut!((*out.as_mut_ptr()).data) };
+    RegexpError::wrap(move || {
       let p = unsafe { pattern.data.data() };
 
-      let d = OwnedSlice::from_data(p, *alloc);
+      let d = OwnedSlice::from_data(p, alloc);
 
-      let out_d = unsafe { addr_of_mut!((*out.as_mut_ptr()).data) };
       unsafe { out_d.write(d) };
       Ok(())
     })
