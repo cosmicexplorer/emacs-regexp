@@ -9,7 +9,7 @@ authors.workspace       = true
 
 [lib]
 name                    = "rex"
-crate-type              = ["cdylib"]
+crate-type              = ["cdylib", "staticlib"]
 
 [dependencies]
 emacs-regexp.workspace  = true

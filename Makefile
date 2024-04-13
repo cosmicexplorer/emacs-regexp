@@ -1,7 +1,7 @@
 .PHONY: header lib test clean clean-target
 
 
-CBINDGEN := cbindgen
+CBINDGEN ?= cbindgen
 CARGO_LOCK := ./Cargo.lock
 FFI_DIR := ./ffi
 CBINDGEN_CONFIG := $(FFI_DIR)/cbindgen.toml
@@ -16,30 +16,35 @@ header: $(FFI_HEADER)
 
 
 
-CARGO := cargo
+CARGO ?= cargo
 TARGET_DIR := ./make-target
 PROFILE_SUBDIR := release
-SHARED_LIB_DIR := $(TARGET_DIR)/$(PROFILE_SUBDIR)
+LIB_DIR := $(TARGET_DIR)/$(PROFILE_SUBDIR)
+ABSOLUTE_LIB_DIR := $(realpath $(LIB_DIR))
 LIB_NAME := rex
-SHARED_LIB := $(SHARED_LIB_DIR)/lib$(LIB_NAME).so
-$(SHARED_LIB): $(CARGO_LOCK) $(RUST_FFI_SOURCES)
+
+SHARED_LIB := $(LIB_DIR)/lib$(LIB_NAME).so
+STATIC_LIB := $(LIB_DIR)/lib$(LIB_NAME).a
+$(SHARED_LIB) $(STATIC_LIB): $(CARGO_LOCK) $(RUST_FFI_SOURCES)
 	$(CARGO) build --release -p emacs-regexp-ffi --target-dir $(TARGET_DIR)
 
-lib: $(SHARED_LIB)
-
+lib: $(SHARED_LIB) $(STATIC_LIB)
 
 
 TEST_SRC_DIR := $(FFI_DIR)/test
 TEST_SRC := $(wildcard $(TEST_SRC_DIR)/*.c)
 TEST_OUT := $(patsubst %.c,%.test-exe,$(TEST_SRC))
 
+# We use dynamic linking with rpaths here to reduce binary size in the compiled test executables!
 $(TEST_SRC_DIR)/%.test-exe: $(TEST_SRC_DIR)/%.c $(FFI_HEADER) $(SHARED_LIB)
-	$(CC) -I$(FFI_HEADER_DIR) -L$(SHARED_LIB_DIR) -l$(LIB_NAME) $< -o $@
+	$(CC) -I$(FFI_HEADER_DIR) -L$(LIB_DIR) -l$(LIB_NAME) -Wl,-rpath $(ABSOLUTE_LIB_DIR) \
+		-Og \
+		$< -o $@
 
 test: $(TEST_OUT)
-	@export LD_LIBRARY_PATH="$(realpath $(SHARED_LIB_DIR))"; \
-	for f in $^; do \
-		printf '%s\n...\n' "executing: $${f}"; \
+	@echo '+++BEGIN TESTING+++' >&2
+	@for f in $^; do \
+		printf '%s\n...\n' "<executing: $${f}>"; \
 		if ./$${f}; then echo 'success!'; \
 		else echo 'failed!'; exit 1; fi \
 	done >&2
@@ -47,7 +52,7 @@ test: $(TEST_OUT)
 
 
 clean:
-	rm -fv $(FFI_HEADER) $(SHARED_LIB) $(TEST_OUT)
+	rm -fv $(FFI_HEADER) $(SHARED_LIB) $(STATIC_LIB) $(TEST_OUT)
 
 clean-target: clean
 	rm -rf $(TARGET_DIR)
