@@ -22,6 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![doc(test(attr(deny(warnings))))]
 #![feature(allocator_api)]
 #![feature(slice_ptr_get)]
+#![feature(new_uninit)]
 #![feature(core_intrinsics)]
 #![feature(lang_items)]
 #![allow(internal_features)]
@@ -79,12 +80,12 @@ pub mod objects {
   use core::{
     alloc::{AllocError, Allocator, Layout},
     ffi::c_void,
-    mem,
-    ptr::NonNull,
+    mem::{self, MaybeUninit},
+    ptr::{self, NonNull},
     slice,
   };
 
-  use ::alloc::{boxed::Box, vec::Vec};
+  use ::alloc::boxed::Box;
   use num_enum::{IntoPrimitive, TryFromPrimitive};
 
   #[derive(Default, Debug, Copy, Clone, IntoPrimitive, TryFromPrimitive, PartialEq, Eq)]
@@ -134,27 +135,54 @@ pub mod objects {
   #[repr(C)]
   pub struct OwnedSlice {
     len: usize,
-    data: *mut c_void,
+    data: NonNull<c_void>,
     alloc: CallbackAllocator,
   }
 
   impl OwnedSlice {
-    #[inline(always)]
-    pub const fn new(len: usize, data: *mut c_void, alloc: CallbackAllocator) -> Self {
-      Self { len, data, alloc }
-    }
-
     #[inline(always)]
     pub fn data(&self) -> &[u8] {
       let source: *const u8 = unsafe { mem::transmute(self.data) };
       unsafe { slice::from_raw_parts(source, self.len) }
     }
 
+    #[inline]
+    pub fn from_data(data: &[u8], alloc: CallbackAllocator) -> Self {
+      /* Allocate exactly enough space with the custom allocator. */
+      let mut new_data: Box<[MaybeUninit<u8>], CallbackAllocator> =
+        Box::new_uninit_slice_in(data.len(), alloc);
+
+      /* Write the source data into the newly allocated region, initializing the
+       * memory. */
+      {
+        let nd: &mut [MaybeUninit<u8>] = new_data.as_mut();
+        let base: *mut u8 = unsafe { mem::transmute(nd.as_mut_ptr()) };
+        unsafe {
+          ptr::copy_nonoverlapping(data.as_ptr(), base, data.len());
+        }
+      }
+      /* Get an initialized box for the newly initialized memory! */
+      let new_data: Box<[u8], CallbackAllocator> = unsafe { new_data.assume_init() };
+
+      /* Convert the box into a raw pointer so it can be FFIed. */
+      let (new_data, alloc): (*mut [u8], CallbackAllocator) =
+        Box::into_raw_with_allocator(new_data);
+
+      /* Perform transmute type gymnastics to extract a c_void. */
+      let new_data: *mut c_void = unsafe { mem::transmute(new_data.as_mut_ptr()) };
+      let new_data: NonNull<c_void> = NonNull::new(new_data).unwrap();
+      Self {
+        len: data.len(),
+        data: new_data,
+        alloc,
+      }
+    }
+
+    #[inline]
     pub fn box_data(self) -> Box<[u8], CallbackAllocator> {
       let Self { len, data, alloc } = self;
-      let p = NonNull::new(data).unwrap();
-      let p: NonNull<u8> = unsafe { mem::transmute(p) };
-      let p = NonNull::slice_from_raw_parts(p, len);
+      let p: NonNull<u8> = unsafe { mem::transmute(data) };
+      let p: NonNull<[u8]> = NonNull::slice_from_raw_parts(p, len);
       unsafe { Box::from_raw_in(mem::transmute(p), alloc) }
     }
   }
@@ -168,6 +196,7 @@ pub mod objects {
   }
 
   unsafe impl Allocator for CallbackAllocator {
+    #[inline(always)]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
       assert_eq!(layout.align(), 1);
       match self.alloc.unwrap()(self.ctx, layout.size()) {
@@ -179,6 +208,7 @@ pub mod objects {
       }
     }
 
+    #[inline(always)]
     unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
       let p: NonNull<c_void> = unsafe { mem::transmute(ptr) };
       self.free.unwrap()(self.ctx, p);
@@ -197,12 +227,7 @@ pub mod objects {
 }
 
 pub mod methods {
-  use core::{
-    mem::{self, MaybeUninit},
-    ptr::addr_of_mut,
-  };
-
-  use ::alloc::{boxed::Box, vec::Vec};
+  use core::{mem::MaybeUninit, ptr::addr_of_mut};
 
   use super::objects::{CallbackAllocator, Input, Matcher, OwnedSlice, Pattern, RegexpError};
 
@@ -216,11 +241,7 @@ pub mod methods {
     RegexpError::wrap(|| {
       let p = unsafe { pattern.data.data() };
 
-      let mut d: Vec<u8, CallbackAllocator> = Vec::with_capacity_in(p.len(), *alloc);
-      d.extend_from_slice(p);
-      let d = d.into_boxed_slice();
-      let (d, alloc) = Box::into_raw_with_allocator(d);
-      let d = OwnedSlice::new(p.len(), unsafe { mem::transmute(d.as_mut_ptr()) }, alloc);
+      let d = OwnedSlice::from_data(p, *alloc);
 
       let out_d = unsafe { addr_of_mut!((*out.as_mut_ptr()).data) };
       unsafe { out_d.write(d) };
