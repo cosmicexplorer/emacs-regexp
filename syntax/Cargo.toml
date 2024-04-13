@@ -7,9 +7,5 @@ license                 = "GPL-3.0-or-later"
 repository.workspace    = true
 authors.workspace       = true
 
-[dependencies]
-
-[dev-dependencies]
-
 [lints]
 workspace               = true

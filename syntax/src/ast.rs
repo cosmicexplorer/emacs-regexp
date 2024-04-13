@@ -349,8 +349,10 @@ pub mod expr {
     Prop(CharPropertiesSelector),
     Alt(CharacterAlternative<LSi, A>),
     Esc(Escaped<LSi>),
-    /// .
-    Dot, /* any char except newline */
+    /// `.`
+    ///
+    /// Any char except newline.
+    Dot,
   }
 
   impl<LSi, A> fmt::Debug for SingleCharSelector<LSi, A>

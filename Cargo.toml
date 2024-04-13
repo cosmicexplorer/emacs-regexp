@@ -19,7 +19,7 @@ authors                 = ["Danny McClanahan <dmcC2@hypnicjerk.ai>"]
 [workspace.dependencies]
 emacs-regexp            = { path = "./" }
 emacs-regexp-syntax     = { path = "./syntax" }
-# emacs-regexp-ffi        = { path = "./ffi" }
+emacs-regexp-ffi        = { path = "./ffi" }
 
 [workspace.lints.clippy]
 len_without_is_empty    = "allow"
@@ -36,11 +36,22 @@ used_underscore_binding = "deny"
 collapsible_else_if     = "allow"
 result_large_err        = "allow"
 
+# NB: These apply when building in this workspace, but do *not* apply to any crates outside of
+# this workspace!
 [profile.dev]
+# Necessary to build for no_std.
 panic                   = "abort"
+opt-level               = 0
+debug                   = true
 [profile.release]
+# Necessary to build for no_std.
 panic                   = "abort"
+# Optimizing for size doesn't seem to have much effect, so optimize for performance.
+opt-level               = 3
+# TODO: output binary goes from ~800K => ~17K with debug = false!
+debug                   = true
 
+# --------------------------------------------------------------------------------------------------
 [package]
 name                    = "emacs-regexp"
 description             = "Implementation of emacs regexp matching!"
@@ -52,21 +63,11 @@ authors.workspace       = true
 
 [dependencies]
 emacs-regexp-syntax.workspace = true
-# aho-corasick            = "1.1.2"
 hashbrown               = { version = "0.14", default-features = false, features = ["nightly", "inline-more"] }
-# NB: needs to be patched to support parameterized allocator!
-
-# indexmap                = { version = "2.2.6", default-features = false, features = [] }
-# memchr                  = "2.7.1"
-memchr                  = { git = "https://github.com/cosmicexplorer/memchr", rev = "091a2ecbf84614bb215d3ec17acb856a8eca566d" }
-# memchr                  = { path = "/home/cosmicexplorer/tools/memchr" }
 rustc-hash              = "1.1.0"
-smallvec                = { version = "2.0.0-alpha.4", features = ["specialization", "may_dangle"] }
-static_assertions       = "1.1.0"
-# FIXME: hw acceleration for AVX2? https://docs.rs/xxhash-rust/latest/xxhash_rust/#hw-acceleration
+# smallvec                = { version = "2.0.0-alpha.4", features = ["specialization", "may_dangle"] }
+# TODO: enable hw acceleration! see https://docs.rs/xxhash-rust/latest/xxhash_rust/#hw-acceleration
 xxhash-rust             = { version = "0.8.10", features = ["xxh3", "const_xxh3"] }
-
-[dev-dependencies]
 
 [lints]
 workspace               = true

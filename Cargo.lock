@@ -92,10 +92,7 @@ version = "0.0.0"
 dependencies = [
  "emacs-regexp-syntax",
  "hashbrown 0.14.3",
- "memchr",
  "rustc-hash",
- "smallvec",
- "static_assertions",
  "xxhash-rust",
 ]
 
@@ -192,11 +189,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 
 [[package]]
-name = "memchr"
-version = "2.7.1"
-source = "git+https://github.com/cosmicexplorer/memchr?rev=091a2ecbf84614bb215d3ec17acb856a8eca566d#091a2ecbf84614bb215d3ec17acb856a8eca566d"
-
-[[package]]
 name = "os_str_bytes"
 version = "6.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -275,18 +267,6 @@ dependencies = [
  "ryu",
  "serde",
 ]
-
-[[package]]
-name = "smallvec"
-version = "2.0.0-alpha.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f345fed1f2a354f374f20970fb4faaf3e486cd7cfe95e5abfab6d073176a667"
-
-[[package]]
-name = "static_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strsim"
