@@ -20,17 +20,128 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{
   alloc::{GlobalAlloc, Layout},
-  intrinsics::abort,
   panic::PanicInfo,
 };
 
 use ::alloc::alloc::handle_alloc_error;
+use cfg_if::cfg_if;
 
-/// Even when compiled with `panic="abort"`, we need to define this method
-/// anyway for some reason to successfully compile this `no_std` crate. If
-/// this is ever called, it should have the same behavior as `panic="abort"`.
-#[panic_handler]
-pub fn panic(_info: &PanicInfo) -> ! { abort() }
+#[cfg(feature = "libc")]
+mod libc_backend {
+  use core::{
+    fmt::{self, Write as _},
+    mem, ops,
+    ptr::NonNull,
+    slice,
+  };
+
+  use super::PanicInfo;
+
+  struct CallocWriter {
+    src: NonNull<u8>,
+    len: usize,
+    used: usize,
+  }
+
+  impl CallocWriter {
+    pub fn calloc_for_len(len: usize) -> Option<Self> {
+      let p: *mut u8 = unsafe { mem::transmute(libc::calloc(len, mem::size_of::<u8>())) };
+      Some(Self {
+        src: NonNull::new(p)?,
+        len,
+        used: 0,
+      })
+    }
+
+    fn remaining(&self) -> usize { self.len - self.used }
+
+    fn slice(&mut self) -> &mut [u8] {
+      let rem = self.remaining();
+      let shifted = unsafe { self.src.add(self.used) };
+      unsafe { slice::from_raw_parts_mut(mem::transmute(shifted), rem) }
+    }
+
+    fn data(&self) -> &[u8] {
+      unsafe { slice::from_raw_parts(mem::transmute(self.src), self.used) }
+    }
+  }
+
+  impl ops::Drop for CallocWriter {
+    fn drop(&mut self) {
+      unsafe {
+        libc::free(mem::transmute(self.src));
+      }
+    }
+  }
+
+  impl fmt::Write for CallocWriter {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+      let s = s.as_bytes();
+      let rem = self.slice();
+      if s.len() > rem.len() {
+        rem.copy_from_slice(&s[..rem.len()]);
+        self.used += rem.len();
+        Err(fmt::Error)
+      } else {
+        rem[..s.len()].copy_from_slice(s);
+        self.used += s.len();
+        Ok(())
+      }
+    }
+  }
+
+  pub fn do_panic(info: &PanicInfo) -> ! {
+    const MSG_ALLOC_LEN: usize = 4096;
+    {
+      let mut w = match CallocWriter::calloc_for_len(MSG_ALLOC_LEN) {
+        Some(w) => w,
+        None => {
+          let s = "could not allocate any memory!\n".as_bytes();
+          unsafe {
+            while libc::write(libc::STDERR_FILENO, mem::transmute(s.as_ptr()), s.len()) == 0 {}
+            libc::abort()
+          }
+        },
+      };
+
+      if let Some(loc) = info.location() {
+        let mut f = fmt::Formatter::new(&mut w);
+        let _ = fmt::Display::fmt(loc, &mut f);
+        let _ = w.write_str(": ");
+      } else {
+        let _ = w.write_str("<location unknown>: ");
+      }
+
+      if let Some(args) = info.message() {
+        let _ = fmt::write(&mut w, *args);
+      } else {
+        let payload = info
+          .payload()
+          .downcast_ref::<&str>()
+          .unwrap_or(&"<could not parse panic payload>");
+        let _ = w.write_str(*payload);
+      }
+      let _ = w.write_char('\n');
+
+      let s = w.data();
+      unsafe { while libc::write(libc::STDERR_FILENO, mem::transmute(s.as_ptr()), s.len()) == 0 {} }
+    }
+    unsafe { libc::abort() }
+  }
+}
+
+cfg_if! {
+  if #[cfg(feature = "libc")] {
+    #[panic_handler]
+    pub fn panic(info: &PanicInfo) -> ! { libc_backend::do_panic(info) }
+  } else {
+    /// Even when compiled with `panic="abort"`, we need to define this method
+    /// anyway for some reason to successfully compile this `no_std` crate. If
+    /// this is ever called, it should have the same behavior as `panic="abort"`.
+    #[panic_handler]
+    pub fn panic(_info: &PanicInfo) -> ! { core::intrinsics::abort() }
+  }
+}
 
 /// This method is called to perform stack unwinding, especially across
 /// language runtimes, and must be defined for our `librex.so` to link

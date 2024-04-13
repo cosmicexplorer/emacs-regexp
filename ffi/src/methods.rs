@@ -26,6 +26,11 @@ use crate::objects::{
   CallbackAllocator, Input, Matcher, OwnedExpr, OwnedSlice, Pattern, RegexpError,
 };
 
+#[no_mangle]
+pub extern "C" fn always_panic() {
+  todo!("this always panics!");
+}
+
 /// asdf
 #[must_use]
 #[no_mangle]

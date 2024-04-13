@@ -42,13 +42,9 @@ result_large_err        = "allow"
 # NB: These apply when building in this workspace, but do *not* apply to any crates outside of
 # this workspace!
 [profile.dev]
-# Necessary to build for no_std.
-panic                   = "abort"
 opt-level               = 0
 debug                   = true
 [profile.release]
-# Necessary to build for no_std.
-panic                   = "abort"
 # Optimizing for size doesn't seem to have much effect, so optimize for performance.
 opt-level               = 3
 # NB: output binary goes from ~800K => ~17K with debug = false!

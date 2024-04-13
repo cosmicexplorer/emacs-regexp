@@ -11,8 +11,14 @@ authors.workspace       = true
 name                    = "rex"
 crate-type              = ["cdylib", "staticlib"]
 
+[features]
+default = ["libc"]
+libc = ["dep:libc"]
+
 [dependencies]
+cfg-if                  = "1"
 emacs-regexp.workspace  = true
+libc                    = { version = "0.2.153", optional = true }
 # num_enum                = { version =  "0.7.2", default-features = false, features = [] }
 
 [dev-dependencies]
