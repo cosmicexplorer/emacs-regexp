@@ -28,6 +28,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 extern crate alloc;
 
+pub use emacs_regexp_syntax::parser::parse_bytes;
+
 #[cfg(test)]
 mod test {
   #[test]

@@ -51,8 +51,8 @@ debug                   = true
 panic                   = "abort"
 # Optimizing for size doesn't seem to have much effect, so optimize for performance.
 opt-level               = 3
-# TODO: output binary goes from ~800K => ~17K with debug = false!
-debug                   = true
+# NB: output binary goes from ~800K => ~17K with debug = false!
+debug                   = false
 
 # --------------------------------------------------------------------------------------------------
 [package]
