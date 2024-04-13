@@ -1,6 +1,4 @@
-.PHONY: header lib test clean
-
-CC ?= gcc
+.PHONY: header lib test clean clean-target
 
 
 CBINDGEN := cbindgen
@@ -22,7 +20,6 @@ CARGO := cargo
 TARGET_DIR := ./make-target
 PROFILE_SUBDIR := release
 SHARED_LIB_DIR := $(TARGET_DIR)/$(PROFILE_SUBDIR)
-ABSOLUTE_LIB_DIR := $(realpath $(SHARED_LIB_DIR))
 LIB_NAME := rex
 SHARED_LIB := $(SHARED_LIB_DIR)/lib$(LIB_NAME).so
 $(SHARED_LIB): $(CARGO_LOCK) $(RUST_FFI_SOURCES)
@@ -40,7 +37,7 @@ $(TEST_SRC_DIR)/%.test-exe: $(TEST_SRC_DIR)/%.c $(FFI_HEADER) $(SHARED_LIB)
 	$(CC) -I$(FFI_HEADER_DIR) -L$(SHARED_LIB_DIR) -l$(LIB_NAME) $< -o $@
 
 test: $(TEST_OUT)
-	set -x; export LD_LIBRARY_PATH="$(ABSOLUTE_LIB_DIR)"; \
+	set -x; export LD_LIBRARY_PATH="$(realpath $(SHARED_LIB_DIR))"; \
 	for f in $^; do \
 		./$${f} ; \
 	done
@@ -49,3 +46,6 @@ test: $(TEST_OUT)
 
 clean:
 	rm -fv $(FFI_HEADER) $(SHARED_LIB) $(TEST_OUT)
+
+clean-target: clean
+	rm -rf $(TARGET_DIR)
