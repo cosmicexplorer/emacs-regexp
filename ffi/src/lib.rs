@@ -143,11 +143,13 @@ pub mod objects {
     }
   }
 
+  #[derive(Debug, Clone, PartialEq, Eq)]
   #[repr(C)]
   pub struct Pattern {
     pub data: ForeignSlice,
   }
 
+  #[derive(Debug)]
   #[repr(C)]
   pub struct OwnedSlice {
     len: usize,
@@ -211,6 +213,7 @@ pub mod objects {
     }
   }
 
+  #[derive(Debug)]
   #[repr(C)]
   pub struct OwnedExpr {
     data: NonNull<c_void>,
@@ -297,12 +300,14 @@ pub mod objects {
     }
   }
 
+  #[derive(Debug)]
   #[repr(C)]
   pub struct Matcher {
     pub data: OwnedSlice,
     pub expr: OwnedExpr,
   }
 
+  #[derive(Debug, Clone, PartialEq, Eq)]
   #[repr(C)]
   pub struct Input {
     pub data: ForeignSlice,
