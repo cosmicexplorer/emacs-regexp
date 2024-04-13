@@ -23,6 +23,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(allocator_api)]
 #![feature(slice_ptr_get)]
 #![feature(new_uninit)]
+#![feature(ptr_as_uninit)]
 #![feature(core_intrinsics)]
 #![feature(lang_items)]
 #![allow(internal_features)]
@@ -308,6 +309,24 @@ pub mod objects {
     pub expr: OwnedExpr,
   }
 
+  impl Matcher {
+    /// Get the offsets for each field within the allocated output space.
+    #[inline]
+    pub fn destructure_output_fields(
+      out: &mut MaybeUninit<Self>,
+    ) -> (&mut MaybeUninit<OwnedSlice>, &mut MaybeUninit<OwnedExpr>) {
+      let o = out.as_mut_ptr();
+      unsafe {
+        let d: *mut OwnedSlice = ptr::addr_of_mut!((*o).data);
+        let e: *mut OwnedExpr = ptr::addr_of_mut!((*o).expr);
+        (
+          d.as_uninit_mut().unwrap_unchecked(),
+          e.as_uninit_mut().unwrap_unchecked(),
+        )
+      }
+    }
+  }
+
   #[derive(Debug, Clone, PartialEq, Eq)]
   #[repr(C)]
   pub struct Input {
@@ -316,7 +335,7 @@ pub mod objects {
 }
 
 pub mod methods {
-  use core::{mem::MaybeUninit, ptr::addr_of_mut};
+  use core::mem::MaybeUninit;
 
   use emacs_regexp::syntax::parser::parse_bytes;
 
@@ -332,25 +351,24 @@ pub mod methods {
     alloc: &CallbackAllocator,
     out: &mut MaybeUninit<Matcher>,
   ) -> RegexpError {
+    let (out_d, out_e) = Matcher::destructure_output_fields(out);
     let alloc = *alloc;
-    let (out_d, out_e) = unsafe {
-      (
-        addr_of_mut!((*out.as_mut_ptr()).data),
-        addr_of_mut!((*out.as_mut_ptr()).expr),
-      )
-    };
+    /* Dereference the byte string data, and hope it's valid! */
     let p = unsafe { pattern.data.data() };
+
     RegexpError::wrap(move || {
+      /* Copy the string data into our own allocator.
+       * (FIXME: THIS IS FOR TESTING!!) */
       let d = OwnedSlice::from_data(p, alloc);
+      out_d.write(d);
+
+      /* Parse the pattern string into an AST! */
       let e = {
         let expr = parse_bytes(p, alloc).map_err(|_| RegexpError::ParseError)?;
         OwnedExpr::from_expr(expr, alloc)
       };
+      out_e.write(e);
 
-      unsafe {
-        out_d.write(d);
-        out_e.write(e);
-      }
       Ok(())
     })
   }
@@ -362,10 +380,13 @@ pub mod methods {
     _alloc: &CallbackAllocator,
     input: &Input,
   ) -> RegexpError {
-    RegexpError::wrap(|| {
-      let i = unsafe { input.data.data() };
-      let d = matcher.data.data();
+    /* Get the matcher slice to compare against.
+     * (FIXME: THIS IS FOR TESTING!!) */
+    let d = matcher.data.data();
+    /* Dereference the byte string data, and hope it's valid! */
+    let i = unsafe { input.data.data() };
 
+    RegexpError::wrap(|| {
       if i == d {
         Ok(())
       } else {
