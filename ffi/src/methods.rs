@@ -81,29 +81,14 @@ pub extern "C" fn execute(
 
 #[cfg(test)]
 mod test {
-  use core::{ffi::c_void, mem, ptr::NonNull};
-
   use super::*;
   use crate::objects::ForeignSlice;
-
-  unsafe extern "C" fn rex_alloc(
-    ctx: Option<NonNull<c_void>>,
-    len: usize,
-  ) -> Option<NonNull<c_void>> {
-    assert!(ctx.is_none());
-    assert!(len > 0);
-    NonNull::new(libc::malloc(len))
-  }
-  unsafe extern "C" fn rex_free(ctx: Option<NonNull<c_void>>, p: NonNull<c_void>) {
-    assert!(ctx.is_none());
-    libc::free(mem::transmute(p));
-  }
 
   #[test]
   fn basic_workflow() {
     let s = ForeignSlice::from_data(b"asdf");
     let p = Pattern { data: s };
-    let c = CallbackAllocator::new(None, Some(rex_alloc), Some(rex_free));
+    let c = CallbackAllocator::LIBC_ALLOC;
 
     let mut m: MaybeUninit<Matcher> = MaybeUninit::uninit();
     assert_eq!(compile(&p, &c, &mut m), RegexpError::None);
@@ -124,7 +109,7 @@ mod test {
     /* This fails because it has a close group without any open group. */
     let s = ForeignSlice::from_data(b"as\\)");
     let p = Pattern { data: s };
-    let c = CallbackAllocator::new(None, Some(rex_alloc), Some(rex_free));
+    let c = CallbackAllocator::LIBC_ALLOC;
 
     let mut m: MaybeUninit<Matcher> = MaybeUninit::uninit();
     assert_eq!(compile(&p, &c, &mut m), RegexpError::ParseError);

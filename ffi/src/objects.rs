@@ -205,13 +205,33 @@ pub struct CallbackAllocator {
 #[cfg(test)]
 impl CallbackAllocator {
   #[inline]
-  pub fn new(
+  pub const fn new(
     ctx: Option<NonNull<c_void>>,
-    alloc: Option<unsafe extern "C" fn(Option<NonNull<c_void>>, usize) -> Option<NonNull<c_void>>>,
-    free: Option<unsafe extern "C" fn(Option<NonNull<c_void>>, NonNull<c_void>) -> ()>,
+    alloc: unsafe extern "C" fn(Option<NonNull<c_void>>, usize) -> Option<NonNull<c_void>>,
+    free: unsafe extern "C" fn(Option<NonNull<c_void>>, NonNull<c_void>) -> (),
   ) -> Self {
-    Self { ctx, alloc, free }
+    Self {
+      ctx,
+      alloc: Some(alloc),
+      free: Some(free),
+    }
   }
+
+  pub unsafe extern "C" fn libc_alloc(
+    ctx: Option<NonNull<c_void>>,
+    len: usize,
+  ) -> Option<NonNull<c_void>> {
+    assert!(ctx.is_none());
+    assert!(len > 0);
+    NonNull::new(libc::malloc(len))
+  }
+
+  pub unsafe extern "C" fn libc_free(ctx: Option<NonNull<c_void>>, p: NonNull<c_void>) {
+    assert!(ctx.is_none());
+    libc::free(mem::transmute(p));
+  }
+
+  pub const LIBC_ALLOC: Self = Self::new(None, Self::libc_alloc, Self::libc_free);
 }
 
 unsafe impl Allocator for CallbackAllocator {
