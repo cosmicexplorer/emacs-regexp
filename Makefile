@@ -18,9 +18,9 @@ header: $(FFI_HEADER)
 
 CARGO ?= cargo
 TARGET_DIR := ./make-target
-PROFILE_SUBDIR := release
-LIB_DIR := $(TARGET_DIR)/$(PROFILE_SUBDIR)
-ABSOLUTE_LIB_DIR := $(realpath $(LIB_DIR))
+LIB_DIR := $(TARGET_DIR)/release
+# NB: Need to use abspath here instead of realpath, since the path may not exist yet.
+ABSOLUTE_LIB_DIR := $(abspath $(LIB_DIR))
 LIB_NAME := rex
 
 SHARED_LIB := $(LIB_DIR)/lib$(LIB_NAME).so
@@ -35,10 +35,20 @@ TEST_SRC_DIR := $(FFI_DIR)/test
 TEST_SRC := $(wildcard $(TEST_SRC_DIR)/*.c)
 TEST_OUT := $(patsubst %.c,%.test-exe,$(TEST_SRC))
 
+DEV_LIB_DIR := $(TARGET_DIR)/debug
+DEV_ABSOLUTE_LIB_DIR := $(abspath $(DEV_LIB_DIR))
+DEV_SHARED_LIB := $(DEV_LIB_DIR)/lib$(LIB_NAME).so
+DEV_STATIC_LIB := $(DEV_LIB_DIR)/lib$(LIB_NAME).a
+
+$(DEV_SHARED_LIB) $(DEV_STATIC_LIB): $(CARGO_LOCK) $(RUST_FFI_SOURCES)
+	$(CARGO) build -p emacs-regexp-ffi --target-dir $(TARGET_DIR)
+
 # We use dynamic linking with rpaths here to reduce binary size in the compiled test executables!
-$(TEST_SRC_DIR)/%.test-exe: $(TEST_SRC_DIR)/%.c $(FFI_HEADER) $(SHARED_LIB)
-	$(CC) -I$(FFI_HEADER_DIR) -L$(LIB_DIR) -l$(LIB_NAME) -Wl,-rpath $(ABSOLUTE_LIB_DIR) \
-		-Og \
+$(TEST_SRC_DIR)/%.test-exe: $(TEST_SRC_DIR)/%.c $(FFI_HEADER) $(DEV_SHARED_LIB)
+	$(CC) \
+		-I$(FFI_HEADER_DIR) \
+		-L$(DEV_LIB_DIR) -l$(LIB_NAME) -Wl,-rpath $(DEV_ABSOLUTE_LIB_DIR) \
+		-Og -g \
 		$< -o $@
 
 test: $(TEST_OUT)
@@ -52,7 +62,7 @@ test: $(TEST_OUT)
 
 
 clean:
-	rm -fv $(FFI_HEADER) $(SHARED_LIB) $(STATIC_LIB) $(TEST_OUT)
+	rm -fv $(FFI_HEADER) $(SHARED_LIB) $(STATIC_LIB) $(DEV_SHARED_LIB) $(DEV_STATIC_LIB) $(TEST_OUT)
 
 clean-target: clean
 	rm -rf $(TARGET_DIR)
