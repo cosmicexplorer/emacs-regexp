@@ -891,9 +891,15 @@ mod test {
   #[test]
   fn parse_lit() {
     let parsed = parse_bytes(b"a", System).unwrap();
-    assert!(parsed == Expr::<ByteEncoding, System>::SingleLiteral(SingleLiteral(b'a')));
+    assert_eq!(
+      parsed,
+      Expr::<ByteEncoding, System>::SingleLiteral(SingleLiteral(b'a'))
+    );
 
     let parsed = parse_bytes(b"\\a", System).unwrap();
-    assert!(parsed == Expr::<ByteEncoding, System>::EscapedLiteral(Escaped(SingleLiteral(b'a'))));
+    assert_eq!(
+      parsed,
+      Expr::<ByteEncoding, System>::EscapedLiteral(Escaped(SingleLiteral(b'a')))
+    );
   }
 }

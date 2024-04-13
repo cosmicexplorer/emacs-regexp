@@ -42,7 +42,7 @@ pub mod literals {
 }
 
 pub mod character_alternatives {
-  use core::alloc::Allocator;
+  use core::{alloc::Allocator, fmt};
 
   use ::alloc::vec::Vec;
 
@@ -109,12 +109,27 @@ pub mod character_alternatives {
   }
 
   /// [a-z0-9] or [^a-z]
-  #[derive(Debug, Clone)]
+  #[derive(Clone)]
   pub struct CharacterAlternative<LSi, A>
   where A: Allocator
   {
     pub complemented: ComplementBehavior,
     pub elements: Vec<CharAltComponent<LSi>, A>,
+  }
+
+  impl<LSi, A> fmt::Debug for CharacterAlternative<LSi, A>
+  where
+    LSi: fmt::Debug,
+    A: Allocator,
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      let elements: &[CharAltComponent<LSi>] = self.elements.as_ref();
+      write!(
+        f,
+        "CharacterAlternative {{ complemented: {:?}, elements: {:?} }}",
+        self.complemented, elements
+      )
+    }
   }
 
   impl<LSi, A> PartialEq for CharacterAlternative<LSi, A>
@@ -311,7 +326,7 @@ pub mod char_properties {
 
 /// https://www.gnu.org/software/emacs/manual/html_node/emacs/Regexps.html
 pub mod expr {
-  use core::alloc::Allocator;
+  use core::{alloc::Allocator, fmt};
 
   use ::alloc::{boxed::Box, vec::Vec};
 
@@ -325,7 +340,7 @@ pub mod expr {
   };
   use crate::encoding::LiteralEncoding;
 
-  #[derive(Debug, Clone)]
+  #[derive(Clone)]
   pub enum SingleCharSelector<LSi, A>
   where A: Allocator
   {
@@ -334,6 +349,21 @@ pub mod expr {
     Esc(Escaped<LSi>),
     /// .
     Dot, /* any char except newline */
+  }
+
+  impl<LSi, A> fmt::Debug for SingleCharSelector<LSi, A>
+  where
+    LSi: fmt::Debug,
+    A: Allocator,
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::Prop(cps) => write!(f, "SingleCharSelector::Prop({:?})", cps),
+        Self::Alt(ca) => write!(f, "SingleCharSelector::Alt({:?})", ca),
+        Self::Esc(esc) => write!(f, "SingleCharSelector::Esc({:?})", esc),
+        Self::Dot => write!(f, "SingleCharSelector::Dot"),
+      }
+    }
   }
 
   impl<LSi, A> PartialEq for SingleCharSelector<LSi, A>
@@ -359,7 +389,6 @@ pub mod expr {
   {
   }
 
-  #[derive(Debug, Clone)]
   pub enum Expr<L, A>
   where
     L: LiteralEncoding,
@@ -391,6 +420,66 @@ pub mod expr {
     Concatenation {
       components: Vec<Box<Expr<L, A>, A>, A>,
     },
+  }
+
+  impl<L, A> Clone for Expr<L, A>
+  where
+    L: LiteralEncoding,
+    L::Single: Clone,
+    A: Allocator+Clone,
+  {
+    fn clone(&self) -> Self {
+      match self {
+        Self::SingleLiteral(sl) => Self::SingleLiteral(sl.clone()),
+        Self::EscapedLiteral(el) => Self::EscapedLiteral(el.clone()),
+        Self::Backref(br) => Self::Backref(br.clone()),
+        Self::Anchor(a) => Self::Anchor(a.clone()),
+        Self::CharSelector(scs) => Self::CharSelector(scs.clone()),
+        Self::Postfix { inner, op } => Self::Postfix {
+          inner: inner.clone(),
+          op: op.clone(),
+        },
+        Self::Group { kind, inner } => Self::Group {
+          kind: kind.clone(),
+          inner: inner.clone(),
+        },
+        Self::Alternation { cases } => Self::Alternation {
+          cases: cases.clone(),
+        },
+        Self::Concatenation { components } => Self::Concatenation {
+          components: components.clone(),
+        },
+      }
+    }
+  }
+
+  impl<L, A> fmt::Debug for Expr<L, A>
+  where
+    L: LiteralEncoding,
+    L::Single: fmt::Debug,
+    A: Allocator,
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::SingleLiteral(sl) => write!(f, "Expr::SingleLiteral({:?})", sl),
+        Self::EscapedLiteral(el) => write!(f, "Expr::EscapedLiteral({:?})", el),
+        Self::Backref(br) => write!(f, "Expr::Backref({:?})", br),
+        Self::Anchor(a) => write!(f, "Expr::Anchor({:?})", a),
+        Self::CharSelector(scs) => write!(f, "Expr::CharSelector({:?})", scs),
+        Self::Postfix { inner, op } => {
+          write!(f, "Expr::Postfix {{ inner: {:?}, op: {:?} }}", inner, op)
+        },
+        Self::Group { kind, inner } => {
+          write!(f, "Expr::Group {{ kind: {:?}, inner: {:?} }}", kind, inner)
+        },
+        Self::Alternation { cases } => {
+          write!(f, "Expr::Alternation {{ cases: {:?} }}", cases)
+        },
+        Self::Concatenation { components } => {
+          write!(f, "Expr::Concatenation {{ components: {:?} }}", components)
+        },
+      }
+    }
   }
 
   impl<L, A> PartialEq for Expr<L, A>
