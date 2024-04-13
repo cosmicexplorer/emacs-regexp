@@ -89,6 +89,7 @@ pub mod objects {
 
   #[cfg(not(test))]
   use ::alloc::boxed::Box;
+  use emacs_regexp::syntax::{ast::expr::Expr, encoding::ByteEncoding};
 
   #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
   #[repr(u8)]
@@ -117,6 +118,7 @@ pub mod objects {
     }
   }
 
+  #[derive(Debug, Copy, Clone, PartialEq, Eq)]
   #[repr(C)]
   pub struct ForeignSlice {
     len: usize,
@@ -128,6 +130,16 @@ pub mod objects {
     pub unsafe fn data(&self) -> &[u8] {
       let source: *const u8 = mem::transmute(self.data);
       slice::from_raw_parts(source, self.len)
+    }
+
+    #[cfg(test)]
+    #[inline]
+    pub fn from_data(data: &[u8]) -> Self {
+      let source: *const c_void = unsafe { mem::transmute(data.as_ptr()) };
+      Self {
+        len: data.len(),
+        data: source,
+      }
     }
   }
 
@@ -199,6 +211,50 @@ pub mod objects {
     }
   }
 
+  #[repr(C)]
+  pub struct OwnedExpr {
+    data: NonNull<c_void>,
+    alloc: CallbackAllocator,
+  }
+
+  impl OwnedExpr {
+    #[inline(always)]
+    pub fn expr(&self) -> &Expr<ByteEncoding, CallbackAllocator> {
+      let p: *mut Expr<ByteEncoding, CallbackAllocator> = unsafe { mem::transmute(self.data) };
+      unsafe { &*p }
+    }
+
+    #[inline]
+    pub fn from_expr(
+      data: Expr<ByteEncoding, CallbackAllocator>,
+      alloc: CallbackAllocator,
+    ) -> Self {
+      /* Box the expr onto the heap. */
+      let boxed = Box::new_in(data, alloc);
+      /* Convert the box into a raw pointer so it can be FFIed. */
+      let (box_data, alloc): (
+        *mut Expr<ByteEncoding, CallbackAllocator>,
+        CallbackAllocator,
+      ) = Box::into_raw_with_allocator(boxed);
+      /* Perform transmute type gymnastics to extract a c_void. */
+      let box_data: NonNull<c_void> = unsafe {
+        let box_data: *mut c_void = mem::transmute(box_data);
+        NonNull::new_unchecked(box_data)
+      };
+      Self {
+        data: box_data,
+        alloc,
+      }
+    }
+
+    #[inline]
+    pub fn into_box(self) -> Box<Expr<ByteEncoding, CallbackAllocator>, CallbackAllocator> {
+      let Self { data, alloc } = self;
+      let p: *mut Expr<ByteEncoding, CallbackAllocator> = unsafe { mem::transmute(data) };
+      unsafe { Box::from_raw_in(p, alloc) }
+    }
+  }
+
   #[derive(Debug, Copy, Clone)]
   #[repr(C)]
   pub struct CallbackAllocator {
@@ -207,22 +263,35 @@ pub mod objects {
     free: Option<unsafe extern "C" fn(Option<NonNull<c_void>>, NonNull<c_void>) -> ()>,
   }
 
+  #[cfg(test)]
+  impl CallbackAllocator {
+    #[inline]
+    pub fn new(
+      ctx: Option<NonNull<c_void>>,
+      alloc: Option<
+        unsafe extern "C" fn(Option<NonNull<c_void>>, usize) -> Option<NonNull<c_void>>,
+      >,
+      free: Option<unsafe extern "C" fn(Option<NonNull<c_void>>, NonNull<c_void>) -> ()>,
+    ) -> Self {
+      Self { ctx, alloc, free }
+    }
+  }
+
   unsafe impl Allocator for CallbackAllocator {
     #[inline(always)]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-      assert_eq!(layout.align(), 1);
-      match unsafe { self.alloc.unwrap()(self.ctx, layout.size()) } {
+      let n = layout.pad_to_align().size();
+      match unsafe { self.alloc.unwrap()(self.ctx, n) } {
         None => Err(AllocError),
-        Some(p) => {
-          let p: NonNull<u8> = unsafe { mem::transmute(p) };
-          Ok(NonNull::slice_from_raw_parts(p, layout.size()))
-        },
+        Some(p) => Ok(NonNull::slice_from_raw_parts(
+          unsafe { mem::transmute(p) },
+          n,
+        )),
       }
     }
 
     #[inline(always)]
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-      assert_eq!(layout.align(), 1);
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
       let p: NonNull<c_void> = mem::transmute(ptr);
       self.free.unwrap()(self.ctx, p);
     }
@@ -231,6 +300,7 @@ pub mod objects {
   #[repr(C)]
   pub struct Matcher {
     pub data: OwnedSlice,
+    pub expr: OwnedExpr,
   }
 
   #[repr(C)]
@@ -242,7 +312,11 @@ pub mod objects {
 pub mod methods {
   use core::{mem::MaybeUninit, ptr::addr_of_mut};
 
-  use super::objects::{CallbackAllocator, Input, Matcher, OwnedSlice, Pattern, RegexpError};
+  use emacs_regexp::syntax::parser::parse_bytes;
+
+  use super::objects::{
+    CallbackAllocator, Input, Matcher, OwnedExpr, OwnedSlice, Pattern, RegexpError,
+  };
 
   /// asdf
   #[no_mangle]
@@ -252,13 +326,24 @@ pub mod methods {
     out: &mut MaybeUninit<Matcher>,
   ) -> RegexpError {
     let alloc = *alloc;
-    let out_d = unsafe { addr_of_mut!((*out.as_mut_ptr()).data) };
+    let (out_d, out_e) = unsafe {
+      (
+        addr_of_mut!((*out.as_mut_ptr()).data),
+        addr_of_mut!((*out.as_mut_ptr()).expr),
+      )
+    };
+    let p = unsafe { pattern.data.data() };
     RegexpError::wrap(move || {
-      let p = unsafe { pattern.data.data() };
-
       let d = OwnedSlice::from_data(p, alloc);
+      let e = {
+        let expr = parse_bytes(p, alloc).map_err(|_| RegexpError::ParseError)?;
+        OwnedExpr::from_expr(expr, alloc)
+      };
 
-      unsafe { out_d.write(d) };
+      unsafe {
+        out_d.write(d);
+        out_e.write(e);
+      }
       Ok(())
     })
   }
@@ -279,5 +364,47 @@ pub mod methods {
         Err(RegexpError::MatchError)
       }
     })
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use core::{
+    ffi::c_void,
+    mem::{self, MaybeUninit},
+    ptr::NonNull,
+  };
+
+  use super::{methods::*, objects::*};
+
+  unsafe extern "C" fn rex_alloc(
+    ctx: Option<NonNull<c_void>>,
+    len: usize,
+  ) -> Option<NonNull<c_void>> {
+    assert!(ctx.is_none());
+    assert!(len > 0);
+    NonNull::new(libc::malloc(len))
+  }
+  unsafe extern "C" fn rex_free(ctx: Option<NonNull<c_void>>, p: NonNull<c_void>) {
+    assert!(ctx.is_none());
+    libc::free(mem::transmute(p));
+  }
+
+  #[test]
+  fn basic_workflow() {
+    let s = ForeignSlice::from_data(b"asdf");
+    let p = Pattern { data: s };
+    let c = CallbackAllocator::new(None, Some(rex_alloc), Some(rex_free));
+
+    let mut m: MaybeUninit<Matcher> = MaybeUninit::uninit();
+    assert_eq!(compile(&p, &c, &mut m), RegexpError::None);
+    let m = unsafe { m.assume_init() };
+
+    let i = Input { data: s };
+    assert_eq!(execute(&m, &c, &i), RegexpError::None);
+
+    let s2 = ForeignSlice::from_data(b"bsdf");
+    let i2 = Input { data: s2 };
+    assert_eq!(execute(&m, &c, &i2), RegexpError::MatchError);
   }
 }

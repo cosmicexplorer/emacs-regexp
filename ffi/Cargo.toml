@@ -18,5 +18,8 @@ emacs-regexp.workspace  = true
 [build-dependencies]
 cbindgen                = "0.26.0"
 
+[dev-dependencies]
+libc                    = "0.2.153"
+
 [lints]
 workspace               = true

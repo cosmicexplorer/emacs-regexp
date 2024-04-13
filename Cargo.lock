@@ -108,6 +108,7 @@ version = "0.0.0"
 dependencies = [
  "cbindgen",
  "emacs-regexp",
+ "libc",
 ]
 
 [[package]]
