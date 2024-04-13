@@ -1,4 +1,4 @@
-.PHONY: header lib test-panic test-src test clean clean-target
+.PHONY: gen lib test-panic test-src test clean clean-target
 
 
 CBINDGEN ?= cbindgen
@@ -7,12 +7,12 @@ FFI_DIR := ./ffi
 CBINDGEN_CONFIG := $(FFI_DIR)/cbindgen.toml
 RUST_FFI_SOURCES := $(wildcard $(FFI_DIR)/src/*.rs)
 
-FFI_HEADER_DIR := $(FFI_DIR)/src
+FFI_HEADER_DIR := gen
 FFI_HEADER := $(FFI_HEADER_DIR)/rex.h
 $(FFI_HEADER): $(CARGO_LOCK) $(CBINDGEN_CONFIG) $(RUST_FFI_SOURCES)
 	$(CBINDGEN) --config $(CBINDGEN_CONFIG) --lockfile $(CARGO_LOCK) -v -o $@ -- $(FFI_DIR)
 
-header: $(FFI_HEADER)
+gen: $(FFI_HEADER)
 
 
 

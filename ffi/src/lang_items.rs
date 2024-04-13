@@ -118,8 +118,9 @@ mod libc_backend {
         let payload = info
           .payload()
           .downcast_ref::<&str>()
-          .unwrap_or(&"<could not parse panic payload>");
-        let _ = w.write_str(*payload);
+          .map(|s| *s)
+          .unwrap_or("<could not parse panic payload>");
+        let _ = w.write_str(payload);
       }
       let _ = w.write_char('\n');
 
@@ -135,9 +136,6 @@ cfg_if! {
     #[panic_handler]
     pub fn panic(info: &PanicInfo) -> ! { libc_backend::do_panic(info) }
   } else {
-    /// Even when compiled with `panic="abort"`, we need to define this method
-    /// anyway for some reason to successfully compile this `no_std` crate. If
-    /// this is ever called, it should have the same behavior as `panic="abort"`.
     #[panic_handler]
     pub fn panic(_info: &PanicInfo) -> ! { core::intrinsics::abort() }
   }
