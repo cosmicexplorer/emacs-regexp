@@ -3,11 +3,13 @@ members                 = [
     ".",
     "syntax",
     "ffi",
+    "automata",
 ]
 default-members         = [
     ".",
     "syntax",
     "ffi",
+    # "automata",
 ]
 resolver                = "2"
 
@@ -18,6 +20,7 @@ authors                 = ["Danny McClanahan <dmcC2@hypnicjerk.ai>"]
 
 [workspace.dependencies]
 emacs-regexp            = { path = "./" }
+emacs-regexp-automata   = { path = "./automata" }
 emacs-regexp-syntax     = { path = "./syntax" }
 emacs-regexp-ffi        = { path = "./ffi" }
 
@@ -62,12 +65,8 @@ repository.workspace    = true
 authors.workspace       = true
 
 [dependencies]
+# emacs-regexp-automata.workspace = true
 emacs-regexp-syntax.workspace = true
-hashbrown               = { version = "0.14", default-features = false, features = ["nightly", "inline-more"] }
-rustc-hash              = "1.1.0"
-# smallvec                = { version = "2.0.0-alpha.4", features = ["specialization", "may_dangle"] }
-# TODO: enable hw acceleration! see https://docs.rs/xxhash-rust/latest/xxhash_rust/#hw-acceleration
-xxhash-rust             = { version = "0.8.10", features = ["xxh3", "const_xxh3"] }
 
 [lints]
 workspace               = true

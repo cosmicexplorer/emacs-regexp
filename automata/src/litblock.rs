@@ -20,6 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{alloc::Allocator, simd::prelude::*};
 
+#[cfg(not(test))]
 use ::alloc::vec::Vec;
 
 use crate::{continuation, ComponentOffset, IntraComponentInterval, UnanchoredMatchResult};

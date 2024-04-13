@@ -87,6 +87,7 @@ pub mod objects {
     slice,
   };
 
+  #[cfg(not(test))]
   use ::alloc::boxed::Box;
 
   #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
@@ -181,7 +182,7 @@ pub mod objects {
     }
 
     #[inline]
-    pub fn box_data(self) -> Box<[u8], CallbackAllocator> {
+    pub fn into_box(self) -> Box<[u8], CallbackAllocator> {
       let Self { len, data, alloc } = self;
       let p: NonNull<u8> = unsafe { mem::transmute(data) };
       let p: NonNull<[u8]> = NonNull::slice_from_raw_parts(p, len);
@@ -256,7 +257,7 @@ pub mod methods {
   #[no_mangle]
   pub extern "C" fn execute(
     matcher: &Matcher,
-    alloc: &CallbackAllocator,
+    _alloc: &CallbackAllocator,
     input: &Input,
   ) -> RegexpError {
     RegexpError::wrap(|| {
