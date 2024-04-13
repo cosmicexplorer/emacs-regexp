@@ -37,10 +37,12 @@ $(TEST_SRC_DIR)/%.test-exe: $(TEST_SRC_DIR)/%.c $(FFI_HEADER) $(SHARED_LIB)
 	$(CC) -I$(FFI_HEADER_DIR) -L$(SHARED_LIB_DIR) -l$(LIB_NAME) $< -o $@
 
 test: $(TEST_OUT)
-	set -x; export LD_LIBRARY_PATH="$(realpath $(SHARED_LIB_DIR))"; \
+	@export LD_LIBRARY_PATH="$(realpath $(SHARED_LIB_DIR))"; \
 	for f in $^; do \
-		./$${f} ; \
-	done
+		printf '%s\n...\n' "executing: $${f}"; \
+		if ./$${f}; then echo 'success!'; \
+		else echo 'failed!'; exit 1; fi \
+	done >&2
 
 
 
