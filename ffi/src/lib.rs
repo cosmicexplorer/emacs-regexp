@@ -84,13 +84,30 @@ pub mod lang_items {
   pub static ALLOCATOR: ImmediatelyErrorAllocator = ImmediatelyErrorAllocator;
 }
 
-#[derive(Default, Copy, Clone, IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Copy, Clone, IntoPrimitive, TryFromPrimitive, PartialEq, Eq)]
 #[repr(u8)]
 pub enum RegexpError {
   #[default]
   None = 0,
   CompileError = 1,
   MatchError = 2,
+}
+
+impl RegexpError {
+  #[inline(always)]
+  pub fn wrap(f: impl FnOnce() -> Result<(), Self>) -> Self {
+    match f() {
+      Ok(()) => Self::None,
+      Err(e) => {
+        assert_ne!(
+          e,
+          Self::None,
+          "regexp error of none was provided: this is a logic error"
+        );
+        e
+      },
+    }
+  }
 }
 
 #[repr(C)]
@@ -176,22 +193,23 @@ pub extern "C" fn compile(
   alloc: &CallbackAllocator,
   out: &mut MaybeUninit<Matcher>,
 ) -> RegexpError {
-  let p = unsafe { pattern.data.data() };
+  RegexpError::wrap(|| {
+    let p = unsafe { pattern.data.data() };
 
-  let mut d: Vec<u8, CallbackAllocator> = Vec::with_capacity_in(p.len(), *alloc);
-  d.extend_from_slice(p);
-  let d = d.into_boxed_slice();
-  let (d, alloc) = Box::into_raw_with_allocator(d);
-  let d = OwnedSlice {
-    len: p.len(),
-    data: unsafe { mem::transmute(d.as_mut_ptr()) },
-    alloc,
-  };
+    let mut d: Vec<u8, CallbackAllocator> = Vec::with_capacity_in(p.len(), *alloc);
+    d.extend_from_slice(p);
+    let d = d.into_boxed_slice();
+    let (d, alloc) = Box::into_raw_with_allocator(d);
+    let d = OwnedSlice {
+      len: p.len(),
+      data: unsafe { mem::transmute(d.as_mut_ptr()) },
+      alloc,
+    };
 
-  let out_d = unsafe { addr_of_mut!((*out.as_mut_ptr()).data) };
-  unsafe { out_d.write(d) };
-
-  RegexpError::None
+    let out_d = unsafe { addr_of_mut!((*out.as_mut_ptr()).data) };
+    unsafe { out_d.write(d) };
+    Ok(())
+  })
 }
 
 #[no_mangle]
@@ -200,12 +218,14 @@ pub extern "C" fn execute(
   alloc: &CallbackAllocator,
   input: &Input,
 ) -> RegexpError {
-  let i = unsafe { input.data.data() };
-  let d = matcher.data.data();
+  RegexpError::wrap(|| {
+    let i = unsafe { input.data.data() };
+    let d = matcher.data.data();
 
-  if i == d {
-    RegexpError::None
-  } else {
-    RegexpError::MatchError
-  }
+    if i == d {
+      Ok(())
+    } else {
+      Err(RegexpError::MatchError)
+    }
+  })
 }
