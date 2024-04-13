@@ -27,7 +27,7 @@ use crate::objects::{
 };
 
 #[no_mangle]
-pub extern "C" fn always_panic() {
+pub extern "C" fn always_panic() -> ! {
   todo!("this always panics!");
 }
 
