@@ -30,6 +30,8 @@ use core::{
 use ::alloc::boxed::Box;
 use emacs_regexp::syntax::{ast::expr::Expr, encoding::ByteEncoding};
 
+use crate::methods::BoxAllocator;
+
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[must_use]
 #[repr(u8)]
@@ -167,14 +169,12 @@ impl OwnedExpr {
   }
 
   #[inline]
-  pub fn from_expr(data: Expr<ByteEncoding, CallbackAllocator>, alloc: CallbackAllocator) -> Self {
+  pub fn from_expr(data: Expr<ByteEncoding, BoxAllocator>, alloc: CallbackAllocator) -> Self {
     /* Box the expr onto the heap. */
-    let boxed = Box::new_in(data, alloc);
+    let boxed: Box<Expr<ByteEncoding, BoxAllocator>, CallbackAllocator> = Box::new_in(data, alloc);
     /* Convert the box into a raw pointer so it can be FFIed. */
-    let (box_data, alloc): (
-      *mut Expr<ByteEncoding, CallbackAllocator>,
-      CallbackAllocator,
-    ) = Box::into_raw_with_allocator(boxed);
+    let (box_data, alloc): (*mut Expr<ByteEncoding, BoxAllocator>, CallbackAllocator) =
+      Box::into_raw_with_allocator(boxed);
     /* Perform transmute type gymnastics to extract a c_void. */
     let box_data: NonNull<c_void> = unsafe {
       let box_data: *mut c_void = mem::transmute(box_data);
@@ -187,9 +187,9 @@ impl OwnedExpr {
   }
 
   #[inline]
-  pub fn into_box(self) -> Box<Expr<ByteEncoding, CallbackAllocator>, CallbackAllocator> {
+  pub fn into_box(self) -> Box<Expr<ByteEncoding, BoxAllocator>, CallbackAllocator> {
     let Self { data, alloc } = self;
-    let p: *mut Expr<ByteEncoding, CallbackAllocator> = unsafe { mem::transmute(data) };
+    let p: *mut Expr<ByteEncoding, BoxAllocator> = unsafe { mem::transmute(data) };
     unsafe { Box::from_raw_in(p, alloc) }
   }
 }

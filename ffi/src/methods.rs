@@ -20,6 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::mem::MaybeUninit;
 
+use cfg_if::cfg_if;
 use emacs_regexp::syntax::parser::parse_bytes;
 
 use crate::objects::{
@@ -29,6 +30,24 @@ use crate::objects::{
 #[no_mangle]
 pub extern "C" fn always_panic() -> ! {
   todo!("this always panics!");
+}
+
+cfg_if! {
+  if #[cfg(feature = "libc")] {
+    pub type BoxAllocator = crate::libc_backend::LibcAllocator;
+
+    #[inline(always)]
+    fn box_allocator(_alloc: CallbackAllocator) -> BoxAllocator {
+      crate::libc_backend::LibcAllocator
+    }
+  } else {
+    pub type BoxAllocator = CallbackAllocator;
+
+    #[inline(always)]
+    fn box_allocator(alloc: CallbackAllocator) -> BoxAllocator {
+      alloc
+    }
+  }
 }
 
 /// asdf
@@ -52,7 +71,10 @@ pub extern "C" fn compile(
 
     /* Parse the pattern string into an AST! */
     let e = {
-      let expr = parse_bytes(p, alloc).map_err(|_| RegexpError::ParseError)?;
+      /* Allocate internal AST nodes with the configured "box allocator". */
+      let expr = parse_bytes(p, box_allocator(alloc)).map_err(|_| RegexpError::ParseError)?;
+      /* Allocate space to store the top-level AST node using the provided
+       * CallbackAllocator. */
       OwnedExpr::from_expr(expr, alloc)
     };
     out_e.write(e);
