@@ -35,7 +35,6 @@ pub extern "C" fn always_panic() -> ! {
 cfg_if! {
   if #[cfg(feature = "libc")] {
     pub type BoxAllocator = crate::libc_backend::LibcAllocator;
-    /* pub type BoxAllocator = CallbackAllocator; */
 
     #[inline(always)]
     fn box_allocator(_alloc: CallbackAllocator) -> BoxAllocator {
@@ -74,7 +73,6 @@ pub extern "C" fn compile(
     let e = {
       /* Allocate internal AST nodes with the configured "box allocator". */
       let expr = parse_bytes(p, box_allocator(alloc)).map_err(|_| RegexpError::ParseError)?;
-      /* let expr = parse_bytes(p, alloc).map_err(|_| RegexpError::ParseError)?; */
       /* Allocate space to store the top-level AST node using the provided
        * CallbackAllocator. */
       OwnedExpr::from_expr(expr, alloc)

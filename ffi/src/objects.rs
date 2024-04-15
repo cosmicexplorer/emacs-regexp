@@ -163,8 +163,8 @@ pub struct OwnedExpr {
 
 impl OwnedExpr {
   #[inline(always)]
-  pub fn expr(&self) -> &Expr<ByteEncoding, CallbackAllocator> {
-    let p: *mut Expr<ByteEncoding, CallbackAllocator> = unsafe { mem::transmute(self.data) };
+  pub fn expr(&self) -> &Expr<ByteEncoding, BoxAllocator> {
+    let p: *mut Expr<ByteEncoding, BoxAllocator> = self.data.cast().as_ptr();
     unsafe { &*p }
   }
 
