@@ -24,7 +24,9 @@ emacs-regexp-automata   = { path = "./automata" }
 emacs-regexp-syntax     = { path = "./syntax" }
 emacs-regexp-ffi        = { path = "./ffi" }
 
+cfg-if                  = "1"
 displaydoc              = { version = "0.2.4", default-features = false }
+static_assertions       = "1.1.0"
 thiserror               = { git = "https://github.com/cosmicexplorer/thiserror", rev = "a108a9ef284ab09e07175254ba1b6a7f245a10fc", default-features = false }
 
 [workspace.lints.clippy]

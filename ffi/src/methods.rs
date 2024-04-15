@@ -18,7 +18,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! FFI methods exposed over the C ABI.
 
-use core::{ffi::c_void, mem::MaybeUninit, ptr::NonNull};
+use core::{
+  ffi::c_void,
+  mem::{self, MaybeUninit},
+  ptr::NonNull,
+};
 
 #[cfg(not(test))]
 use ::alloc::boxed::Box;
@@ -32,6 +36,7 @@ pub extern "C" fn always_panic() -> ! { todo!("this always panics!") }
 cfg_if! {
   if #[cfg(feature = "libc")] {
     pub type BoxAllocator = crate::libc_backend::LibcAllocator;
+    static_assertions::const_assert_eq!(0, mem::size_of::<BoxAllocator>());
 
     #[inline(always)]
     fn box_allocator(_alloc: CallbackAllocator) -> BoxAllocator {
@@ -39,6 +44,7 @@ cfg_if! {
     }
   } else {
     pub type BoxAllocator = CallbackAllocator;
+    static_assertions::const_assert_eq!(24, mem::size_of::<BoxAllocator>());
 
     #[inline(always)]
     fn box_allocator(alloc: CallbackAllocator) -> BoxAllocator {
@@ -57,7 +63,6 @@ pub extern "C" fn compile(
 ) -> RegexpError {
   let (out_d, out_e) = Matcher::destructure_output_fields(out);
   let alloc = *alloc;
-  /* Dereference the byte string data, and hope it's valid! */
   let p = unsafe { pattern.as_pattern() };
 
   RegexpError::wrap(move || {

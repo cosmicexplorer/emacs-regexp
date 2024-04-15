@@ -32,6 +32,7 @@ use ::alloc::vec::Vec;
 
 #[derive(Debug, Copy, Clone, Default)]
 pub struct LibcAllocator;
+static_assertions::const_assert_eq!(0, mem::size_of::<LibcAllocator>());
 
 impl LibcAllocator {
   #[inline(always)]
