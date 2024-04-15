@@ -31,7 +31,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 extern crate alloc;
 
-use core::{alloc::Allocator, mem::MaybeUninit};
+use core::{alloc::Allocator, fmt, mem::MaybeUninit};
 
 #[cfg(not(test))]
 use ::alloc::boxed::Box;
@@ -64,6 +64,7 @@ impl<'n> Pattern<'n> {
   pub const fn new(data: &'n [u8]) -> Self { Self { data } }
 }
 
+#[derive(Clone)]
 pub struct Matcher<AData, AExpr>
 where
   AData: Allocator,
@@ -71,6 +72,17 @@ where
 {
   pub data: Box<[u8], AData>,
   pub expr: Expr<ByteEncoding, AExpr>,
+}
+
+impl<AData, AExpr> fmt::Debug for Matcher<AData, AExpr>
+where
+  AData: Allocator,
+  AExpr: Allocator,
+{
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let Self { data, expr } = self;
+    write!(f, "Matcher {{ data: {:?}, expr: {:?} }}", data, expr)
+  }
 }
 
 impl<AData, AExpr> Matcher<AData, AExpr>

@@ -44,14 +44,18 @@ DEV_ABSOLUTE_LIB_DIR := $(abspath $(DEV_LIB_DIR))
 DEV_SHARED_LIB := $(DEV_LIB_DIR)/lib$(LIB_NAME).so
 DEV_STATIC_LIB := $(DEV_LIB_DIR)/lib$(LIB_NAME).a
 
+_BUILD_PANIC_ARGS := --features panic-testing
+_PANIC_DEFINES := -DPANIC_TESTING
+
 $(DEV_SHARED_LIB) $(DEV_STATIC_LIB): $(CARGO_LOCK) $(RUST_FFI_SOURCES)
-	$(CARGO) build -p emacs-regexp-ffi --target-dir $(TARGET_DIR)
+	$(CARGO) build -p emacs-regexp-ffi $(_BUILD_PANIC_ARGS) --target-dir $(TARGET_DIR)
 
 # We use dynamic linking with rpaths here to reduce binary size in the compiled test executables!
 %.test-exe: %.c $(FFI_HEADER) $(DEV_SHARED_LIB)
 	$(CC) \
 		-I$(FFI_HEADER_DIR) \
 		-L$(DEV_LIB_DIR) -l$(LIB_NAME) -Wl,-rpath $(DEV_ABSOLUTE_LIB_DIR) \
+		$(_PANIC_DEFINES) \
 		-Og -g \
 		$< -o $@
 
@@ -60,7 +64,7 @@ test-panic: $(PANIC_TEST_OUT)
 	@for f in $^; do \
 		printf '%s\n...\n' "<executing: $${f}>"; \
 		if ./$${f} 2>&1 \
-			| grep -Fq 'ffi/src/methods.rs:34:41: not yet implemented: this always panics!'; then \
+			| grep -Fq 'ffi/src/methods.rs:35:41: not yet implemented: this always panics!'; then \
 			echo 'success!'; \
 		else echo 'failed!'; exit 1; fi \
 	done >&2

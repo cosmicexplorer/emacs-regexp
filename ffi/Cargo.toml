@@ -14,6 +14,7 @@ crate-type              = ["cdylib", "staticlib"]
 [features]
 default                 = ["libc"]
 libc                    = ["dep:libc"]
+panic-testing           = []
 
 [dependencies]
 emacs-regexp.workspace  = true

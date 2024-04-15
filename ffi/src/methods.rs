@@ -30,6 +30,7 @@ use cfg_if::cfg_if;
 
 use crate::objects::{CallbackAllocator, Input, Matcher, Pattern, RegexpError};
 
+#[cfg(feature = "panic-testing")]
 #[no_mangle]
 pub extern "C" fn always_panic() -> ! { todo!("this always panics!") }
 

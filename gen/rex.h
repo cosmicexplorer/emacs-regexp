@@ -27,51 +27,53 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #include <stddef.h>
 #include <stdint.h>
 
-enum RegexpError {
+enum REX_RegexpError {
   None = 0,
   ParseError = 1,
   CompileError = 2,
   MatchError = 3,
 };
-typedef uint8_t RegexpError;
+typedef uint8_t REX_RegexpError;
 
-typedef struct ForeignSlice {
+typedef struct REX_ForeignSlice {
   size_t len;
   const void *data;
-} ForeignSlice;
+} REX_ForeignSlice;
 
-typedef struct Pattern {
-  struct ForeignSlice data;
-} Pattern;
+typedef struct REX_Pattern {
+  struct REX_ForeignSlice data;
+} REX_Pattern;
 
-typedef struct CallbackAllocator {
+typedef struct REX_CallbackAllocator {
   void *ctx;
   void *(*alloc)(void*, size_t);
   void (*free)(void*, void*);
-} CallbackAllocator;
+} REX_CallbackAllocator;
 
-typedef struct Matcher {
+typedef struct REX_Matcher {
   void *inner;
-  struct CallbackAllocator alloc;
-} Matcher;
+  struct REX_CallbackAllocator alloc;
+} REX_Matcher;
 
-typedef struct Input {
-  struct ForeignSlice data;
-} Input;
+typedef struct REX_Input {
+  struct REX_ForeignSlice data;
+} REX_Input;
 
+#if defined(PANIC_TESTING)
 void always_panic(void) __attribute__((noreturn));
+#endif
 
 /**
  * asdf
  */
 __attribute__((warn_unused_result))
-RegexpError compile(const struct Pattern *pattern,
-                    const struct CallbackAllocator *alloc,
-                    struct Matcher *out);
+REX_RegexpError compile(const struct REX_Pattern *pattern,
+                        const struct REX_CallbackAllocator *alloc,
+                        struct REX_Matcher *out);
 
 __attribute__((warn_unused_result))
-RegexpError execute(const struct Matcher *matcher,
-                    const struct CallbackAllocator *_alloc,
-                    const struct Input *input);
+REX_RegexpError execute(const struct REX_Matcher *matcher,
+                        const struct REX_CallbackAllocator *_alloc,
+                        const struct REX_Input *input);
 
 #endif /* rex_h */
