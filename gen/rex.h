@@ -50,20 +50,9 @@ typedef struct CallbackAllocator {
   void (*free)(void*, void*);
 } CallbackAllocator;
 
-typedef struct OwnedSlice {
-  size_t len;
-  void *data;
-  struct CallbackAllocator alloc;
-} OwnedSlice;
-
-typedef struct OwnedExpr {
-  void *data;
-  struct CallbackAllocator alloc;
-} OwnedExpr;
-
 typedef struct Matcher {
-  struct OwnedSlice data;
-  struct OwnedExpr expr;
+  void *inner;
+  struct CallbackAllocator alloc;
 } Matcher;
 
 typedef struct Input {

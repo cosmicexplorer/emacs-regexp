@@ -69,8 +69,8 @@ where
   AData: Allocator,
   AExpr: Allocator,
 {
-  data: Box<[u8], AData>,
-  expr: Expr<ByteEncoding, AExpr>,
+  pub data: Box<[u8], AData>,
+  pub expr: Expr<ByteEncoding, AExpr>,
 }
 
 impl<AData, AExpr> Matcher<AData, AExpr>

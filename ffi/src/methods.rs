@@ -18,14 +18,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! FFI methods exposed over the C ABI.
 
-use core::mem::MaybeUninit;
+use core::{ffi::c_void, mem::MaybeUninit, ptr::NonNull};
 
+#[cfg(not(test))]
+use ::alloc::boxed::Box;
 use cfg_if::cfg_if;
-use emacs_regexp::syntax::parser::parse_bytes;
 
-use crate::objects::{
-  CallbackAllocator, Input, Matcher, OwnedExpr, OwnedSlice, Pattern, RegexpError,
-};
+use crate::objects::{CallbackAllocator, Input, Matcher, Pattern, RegexpError};
 
 #[no_mangle]
 pub extern "C" fn always_panic() -> ! { todo!("this always panics!") }
@@ -59,23 +58,22 @@ pub extern "C" fn compile(
   let (out_d, out_e) = Matcher::destructure_output_fields(out);
   let alloc = *alloc;
   /* Dereference the byte string data, and hope it's valid! */
-  let p = unsafe { pattern.data.data() };
+  let p = unsafe { pattern.as_pattern() };
 
   RegexpError::wrap(move || {
-    /* Copy the string data into our own allocator.
-     * (FIXME: THIS IS FOR TESTING!!) */
-    let d = OwnedSlice::from_data(p, alloc);
-    out_d.write(d);
+    let m: emacs_regexp::Matcher<CallbackAllocator, BoxAllocator> =
+      emacs_regexp::Matcher::compile(p, alloc, box_allocator(alloc)).map_err(|e| match e {
+        emacs_regexp::RegexpError::ParseError(_) => RegexpError::ParseError,
+        emacs_regexp::RegexpError::CompileError => RegexpError::CompileError,
+        emacs_regexp::RegexpError::MatchError => unreachable!(),
+      })?;
 
-    /* Parse the pattern string into an AST! */
-    let e = {
-      /* Allocate internal AST nodes with the configured "box allocator". */
-      let expr = parse_bytes(p, box_allocator(alloc)).map_err(|_| RegexpError::ParseError)?;
-      /* Allocate space to store the top-level AST node using the provided
-       * CallbackAllocator. */
-      OwnedExpr::from_expr(expr, alloc)
-    };
-    out_e.write(e);
+    let m: Box<emacs_regexp::Matcher<CallbackAllocator, BoxAllocator>, CallbackAllocator> =
+      Box::new_in(m, alloc);
+    let (m, m_alloc) = Box::into_raw_with_allocator(m);
+    out_e.write(m_alloc);
+    let m: NonNull<c_void> = NonNull::new(m).unwrap().cast();
+    out_d.write(m);
 
     Ok(())
   })
@@ -88,18 +86,13 @@ pub extern "C" fn execute(
   _alloc: &CallbackAllocator,
   input: &Input,
 ) -> RegexpError {
-  /* Get the matcher slice to compare against.
-   * (FIXME: THIS IS FOR TESTING!!) */
-  let d = matcher.data.data();
-  /* Dereference the byte string data, and hope it's valid! */
-  let i = unsafe { input.data.data() };
-
+  let matcher = matcher.as_matcher();
+  let input = unsafe { input.as_input() };
   RegexpError::wrap(|| {
-    if i == d {
-      Ok(())
-    } else {
-      Err(RegexpError::MatchError)
-    }
+    matcher.execute(input).map_err(|e| match e {
+      emacs_regexp::RegexpError::MatchError => RegexpError::MatchError,
+      _ => unreachable!(),
+    })
   })
 }
 
@@ -118,7 +111,7 @@ mod test {
     let mut m: MaybeUninit<Matcher> = MaybeUninit::uninit();
     assert_eq!(compile(&p, &c, &mut m), RegexpError::None);
     let m = unsafe { m.assume_init() };
-    let ast = format!("{:?}", m.expr.expr());
+    let ast = format!("{:?}", m.as_matcher().expr);
     assert_eq!(ast, "Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] }");
 
     let i = Input { data: s };
