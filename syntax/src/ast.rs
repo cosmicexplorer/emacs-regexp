@@ -480,7 +480,16 @@ pub mod expr {
           write!(f, "Expr::Alternation {{ cases: {:?} }}", cases)
         },
         Self::Concatenation { components } => {
-          write!(f, "Expr::Concatenation {{ components: {:?} }}", components)
+          f.write_str("Expr::Concatenation {{ components: ")?;
+          fmt::Debug::fmt(components, f)?;
+          f.write_str(" }}")?;
+          Ok(())
+          /* f.write_fmt(format_args!( */
+          /*   "Expr::Concatenation {{ components: {:?} }}", */
+          /*   components */
+          /* )) */
+          /* write!(f, "Expr::Concatenation {{ components: {:?} }}",
+           * components) */
         },
       }
     }

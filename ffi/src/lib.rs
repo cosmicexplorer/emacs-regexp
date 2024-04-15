@@ -26,6 +26,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(ptr_as_uninit)]
 #![feature(panic_info_message)]
 #![feature(non_null_convenience)]
+#![feature(alloc_layout_extra)]
 #![feature(fmt_internals)]
 #![feature(core_intrinsics)]
 #![feature(lang_items)]
@@ -61,50 +62,53 @@ pub mod libc_backend {
 
   impl LibcAllocator {
     #[inline(always)]
-    fn padded_allocation_length(layout: Layout) -> usize { layout.pad_to_align().size() }
-
-    #[inline(always)]
-    fn interpret_allocation_result(p: *mut c_void, n: usize) -> Result<NonNull<[u8]>, AllocError> {
-      let p: *mut u8 = unsafe { mem::transmute(p) };
-      match NonNull::new(p) {
-        None => Err(AllocError),
-        Some(p) => {
-          let p: NonNull<[u8]> = NonNull::slice_from_raw_parts(p, n);
-          Ok(p)
-        },
+    fn do_alloc<F: FnOnce(usize) -> *mut c_void>(
+      layout: Layout,
+      f: F,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+      if layout.size() == 0 {
+        return Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0));
       }
+      let alignment_padding = layout.padding_needed_for(layout.align());
+      let p: NonNull<c_void> =
+        NonNull::new(f(layout.size() + alignment_padding)).ok_or(AllocError)?;
+      let p: NonNull<u8> = unsafe { p.byte_add(alignment_padding) }.cast();
+      let p: NonNull<[u8]> = NonNull::slice_from_raw_parts(p, layout.size());
+      Ok(p)
     }
   }
 
   unsafe impl Allocator for LibcAllocator {
     #[inline(always)]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-      let n = Self::padded_allocation_length(layout);
-      Self::interpret_allocation_result(unsafe { libc::malloc(n) }, n)
+      Self::do_alloc(layout, |n| unsafe { libc::malloc(n) })
     }
 
     #[inline(always)]
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
-      let p: *mut c_void = mem::transmute(ptr);
-      libc::free(p);
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+      if layout.size() == 0 {
+        return;
+      }
+      libc::free(ptr.cast().as_ptr());
     }
 
     #[inline(always)]
     fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-      let n = Self::padded_allocation_length(layout);
-      Self::interpret_allocation_result(unsafe { libc::calloc(n, mem::size_of::<u8>()) }, n)
+      Self::do_alloc(layout, |n| unsafe { libc::calloc(n, mem::size_of::<u8>()) })
     }
 
     #[inline(always)]
     unsafe fn grow(
       &self,
       ptr: NonNull<u8>,
-      _old: Layout,
+      old: Layout,
       new: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-      let p: *mut c_void = mem::transmute(ptr);
-      let n = Self::padded_allocation_length(new);
-      Self::interpret_allocation_result(libc::realloc(p, n), n)
+      if old.size() == 0 {
+        Self::do_alloc(new, |n| libc::malloc(n))
+      } else {
+        Self::do_alloc(new, |n| libc::realloc(ptr.cast().as_ptr(), n))
+      }
     }
 
     #[inline(always)]
@@ -114,18 +118,17 @@ pub mod libc_backend {
       old: Layout,
       new: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-      /* Reallocate the pointer. We can assume that the new size is >= the old. */
-      let new_n = new.pad_to_align().size();
-      let p: *mut c_void = mem::transmute(ptr);
-      let ret: NonNull<[u8]> = Self::interpret_allocation_result(libc::realloc(p, new_n), new_n)?;
+      if old.size() == 0 {
+        return Self::do_alloc(new, |n| libc::calloc(n, mem::size_of::<u8>()));
+      }
 
-      /* If the `old` layout was used to allocate with this allocator, this is
-       * exactly how many bytes it would have previously requested from libc. */
-      let old_n = old.pad_to_align().size();
+      let ret: NonNull<[u8]> = Self::do_alloc(new, |n| libc::realloc(ptr.cast().as_ptr(), n))?;
 
       /* Set the new bytes to zero. */
-      let uninitialized_base_address: *mut c_void = mem::transmute(ret.as_mut_ptr().add(old_n));
-      let num_added_bytes = new_n - old_n; /* Assuming new >= old. */
+      let uninitialized_base_address: *mut c_void =
+        ret.as_non_null_ptr().byte_add(old.size()).cast().as_ptr();
+      debug_assert!(new.size() >= old.size());
+      let num_added_bytes = new.size() - old.size();
       libc::explicit_bzero(uninitialized_base_address, num_added_bytes);
 
       Ok(ret)
@@ -135,12 +138,18 @@ pub mod libc_backend {
     unsafe fn shrink(
       &self,
       ptr: NonNull<u8>,
-      _old: Layout,
+      old: Layout,
       new: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-      let p: *mut c_void = mem::transmute(ptr);
-      let n = Self::padded_allocation_length(new);
-      Self::interpret_allocation_result(libc::realloc(p, n), n)
+      if old.size() == 0 {
+        assert_eq!(new.size(), 0);
+        return Ok(NonNull::slice_from_raw_parts(ptr, 0));
+      }
+      if new.size() == 0 {
+        libc::free(ptr.cast().as_ptr());
+        return Ok(NonNull::slice_from_raw_parts(new.dangling(), 0));
+      }
+      Self::do_alloc(new, |n| libc::realloc(ptr.cast().as_ptr(), n))
     }
   }
 
