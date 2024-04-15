@@ -75,9 +75,11 @@ pub extern "C" fn compile(
 
     let m: Box<emacs_regexp::Matcher<CallbackAllocator, BoxAllocator>, CallbackAllocator> =
       Box::new_in(m, alloc);
+
     let (m, m_alloc) = Box::into_raw_with_allocator(m);
     out_e.write(m_alloc);
-    let m: NonNull<c_void> = NonNull::new(m).unwrap().cast();
+
+    let m: NonNull<c_void> = unsafe { NonNull::new_unchecked(m) }.cast();
     out_d.write(m);
 
     Ok(())

@@ -1,4 +1,4 @@
-.PHONY: gen lib test-panic test-src test clean clean-target
+.PHONY: gen lib test-panic test-src test clean-gen clean clean-target
 
 
 CBINDGEN ?= cbindgen
@@ -77,8 +77,11 @@ test: test-panic test-src
 
 
 
-clean:
-	rm -fv $(FFI_HEADER) $(SHARED_LIB) $(STATIC_LIB)
+clean-gen:
+	rm -fv $(FFI_HEADER)
+
+clean: clean-gen
+	rm -fv $(SHARED_LIB) $(STATIC_LIB)
 	rm -fv $(DEV_SHARED_LIB) $(DEV_STATIC_LIB) $(TEST_OUT) $(PANIC_TEST_OUT)
 
 clean-target: clean

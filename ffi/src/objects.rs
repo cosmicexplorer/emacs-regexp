@@ -21,7 +21,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 use core::{
   alloc::{AllocError, Allocator, Layout},
   ffi::c_void,
-  mem::{self, MaybeUninit},
+  mem::MaybeUninit,
   ptr::{self, NonNull},
   slice,
 };
@@ -125,7 +125,7 @@ impl CallbackAllocator {
 
   pub unsafe extern "C" fn libc_free(ctx: Option<NonNull<c_void>>, p: NonNull<c_void>) {
     assert!(ctx.is_none());
-    libc::free(mem::transmute(p));
+    libc::free(p.cast().as_ptr());
   }
 
   pub const LIBC_ALLOC: Self = Self::new(None, Self::libc_alloc, Self::libc_free);
@@ -134,20 +134,14 @@ impl CallbackAllocator {
 unsafe impl Allocator for CallbackAllocator {
   #[inline(always)]
   fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-    let n = layout.pad_to_align().size();
-    match unsafe { self.alloc.unwrap()(self.ctx, n) } {
-      None => Err(AllocError),
-      Some(p) => Ok(NonNull::slice_from_raw_parts(
-        unsafe { mem::transmute(p) },
-        n,
-      )),
-    }
+    let p =
+      unsafe { self.alloc.unwrap()(self.ctx, layout.pad_to_align().size()) }.ok_or(AllocError)?;
+    Ok(NonNull::slice_from_raw_parts(p.cast(), layout.size()))
   }
 
   #[inline(always)]
   unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
-    let p: NonNull<c_void> = mem::transmute(ptr);
-    self.free.unwrap()(self.ctx, p);
+    self.free.unwrap()(self.ctx, ptr.cast());
   }
 }
 
