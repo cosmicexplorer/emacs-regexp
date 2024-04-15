@@ -24,8 +24,5 @@ static_assertions.workspace = true
 
 libc                    = { version = "0.2.153", optional = true }
 
-[dev-dependencies]
-libc                    = "0.2.153"
-
 [lints]
 workspace               = true
