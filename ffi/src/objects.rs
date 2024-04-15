@@ -236,7 +236,7 @@ pub struct Matcher {
 
 impl Matcher {
   /// Get the offsets for each field within the allocated output space.
-  #[inline]
+  #[inline(always)]
   pub fn destructure_output_fields(
     out: &mut MaybeUninit<Self>,
   ) -> (&mut MaybeUninit<OwnedSlice>, &mut MaybeUninit<OwnedExpr>) {

@@ -22,6 +22,8 @@ use core::{alloc::Allocator, mem, num::NonZeroUsize, str};
 
 #[cfg(not(test))]
 use ::alloc::{boxed::Box, vec::Vec};
+use displaydoc::Display;
+use thiserror::Error;
 
 use crate::{
   ast::{
@@ -171,23 +173,36 @@ where
   }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Display)]
 pub enum ParseErrorKind {
+  /// unmatched close paren
   UnmatchedCloseParen,
+  /// invalid escape underscore
   InvalidEscapeUnderscore,
+  /// invalid char range dash
   InvalidCharRangeDash,
+  /// invalid char class
   InvalidCharClass,
+  /// unknown char class
   UnknownCharClass,
+  /// invalid postfix position
   InvalidPostfixPosition,
+  /// postfix after alternator
   PostfixAfterAlternator,
+  /// unmatched close repeat
   UnmatchedCloseRepeat,
+  /// invalid repeat numeral
   InvalidRepeatNumeral,
+  /// invalid close repeat
   InvalidCloseRepeat,
+  /// invalid explicit group number
   InvalidExplicitGroupNumber,
+  /// unmatched open paren
   UnmatchedOpenParen,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+/// parse error kind = {kind}, at = {at}
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Display, Error)]
 pub struct ParseError {
   pub kind: ParseErrorKind,
   pub at: usize,

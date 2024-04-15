@@ -23,6 +23,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![doc(test(attr(deny(warnings))))]
 #![feature(allocator_api)]
 #![feature(trait_alias)]
+#![feature(error_in_core)]
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 

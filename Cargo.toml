@@ -25,7 +25,7 @@ emacs-regexp-syntax     = { path = "./syntax" }
 emacs-regexp-ffi        = { path = "./ffi" }
 
 displaydoc              = { version = "0.2.4", default-features = false }
-thiserror               = { git = "https://github.com/cosmicexplorer/thiserror", rev = "0eacc70ed925791741686a30b6d106976ef934e7", default-features = false }
+thiserror               = { git = "https://github.com/cosmicexplorer/thiserror", rev = "a108a9ef284ab09e07175254ba1b6a7f245a10fc", default-features = false }
 
 [workspace.lints.clippy]
 len_without_is_empty    = "allow"

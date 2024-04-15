@@ -55,6 +55,10 @@ dependencies = [
 [[package]]
 name = "emacs-regexp-syntax"
 version = "0.0.0"
+dependencies = [
+ "displaydoc",
+ "thiserror",
+]
 
 [[package]]
 name = "hashbrown"
@@ -120,7 +124,7 @@ dependencies = [
 [[package]]
 name = "thiserror"
 version = "1.0.29"
-source = "git+https://github.com/cosmicexplorer/thiserror?rev=0eacc70ed925791741686a30b6d106976ef934e7#0eacc70ed925791741686a30b6d106976ef934e7"
+source = "git+https://github.com/cosmicexplorer/thiserror?rev=a108a9ef284ab09e07175254ba1b6a7f245a10fc#a108a9ef284ab09e07175254ba1b6a7f245a10fc"
 dependencies = [
  "thiserror-impl",
 ]
@@ -128,7 +132,7 @@ dependencies = [
 [[package]]
 name = "thiserror-impl"
 version = "1.0.29"
-source = "git+https://github.com/cosmicexplorer/thiserror?rev=0eacc70ed925791741686a30b6d106976ef934e7#0eacc70ed925791741686a30b6d106976ef934e7"
+source = "git+https://github.com/cosmicexplorer/thiserror?rev=a108a9ef284ab09e07175254ba1b6a7f245a10fc#a108a9ef284ab09e07175254ba1b6a7f245a10fc"
 dependencies = [
  "proc-macro2",
  "quote",
