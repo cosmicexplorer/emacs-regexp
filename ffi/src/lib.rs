@@ -70,11 +70,8 @@ pub mod libc_backend {
       if layout.size() == 0 {
         return Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0));
       }
-      let alignment_padding = layout.padding_needed_for(layout.align());
-      let p: NonNull<c_void> =
-        NonNull::new(f(layout.size() + alignment_padding)).ok_or(AllocError)?;
-      let p: NonNull<u8> = unsafe { p.byte_add(alignment_padding) }.cast();
-      let p: NonNull<[u8]> = NonNull::slice_from_raw_parts(p, layout.size());
+      let p: NonNull<c_void> = NonNull::new(f(layout.pad_to_align().size())).ok_or(AllocError)?;
+      let p: NonNull<[u8]> = NonNull::slice_from_raw_parts(p.cast(), layout.size());
       Ok(p)
     }
   }

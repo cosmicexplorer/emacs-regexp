@@ -69,18 +69,14 @@ pub struct ForeignSlice {
 
 impl ForeignSlice {
   #[inline(always)]
-  pub unsafe fn data(&self) -> &[u8] {
-    let source: *const u8 = mem::transmute(self.data);
-    slice::from_raw_parts(source, self.len)
-  }
+  pub unsafe fn data(&self) -> &[u8] { slice::from_raw_parts(self.data.cast(), self.len) }
 
   #[cfg(test)]
   #[inline]
   pub fn from_data(data: &[u8]) -> Self {
-    let source: *const c_void = unsafe { mem::transmute(data.as_ptr()) };
     Self {
       len: data.len(),
-      data: source,
+      data: data.as_ptr().cast(),
     }
   }
 }
@@ -102,8 +98,7 @@ pub struct OwnedSlice {
 impl OwnedSlice {
   #[inline(always)]
   pub fn data(&self) -> &[u8] {
-    let source: *const u8 = unsafe { mem::transmute(self.data) };
-    unsafe { slice::from_raw_parts(source, self.len) }
+    unsafe { slice::from_raw_parts(self.data.cast().as_ptr(), self.len) }
   }
 
   #[inline]
