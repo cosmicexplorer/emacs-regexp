@@ -23,12 +23,26 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 /* Ensure any doctest warnings fails the doctest! */
 #![doc(test(attr(deny(warnings))))]
 #![feature(allocator_api)]
+#![feature(error_in_core)]
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
 extern crate alloc;
 
+use displaydoc::Display;
 pub use emacs_regexp_syntax as syntax;
+use thiserror::Error;
+
+#[derive(Debug, Clone, Display, Error)]
+pub enum RegexpError {
+  /// parse error
+  ParseError,
+  /// compile error
+  CompileError,
+  /// match error
+  MatchError,
+}
+
 
 #[cfg(test)]
 mod test {

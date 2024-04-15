@@ -24,6 +24,9 @@ emacs-regexp-automata   = { path = "./automata" }
 emacs-regexp-syntax     = { path = "./syntax" }
 emacs-regexp-ffi        = { path = "./ffi" }
 
+displaydoc              = { version = "0.2.4", default-features = false }
+thiserror               = { git = "https://github.com/cosmicexplorer/thiserror", rev = "0eacc70ed925791741686a30b6d106976ef934e7", default-features = false }
+
 [workspace.lints.clippy]
 len_without_is_empty    = "allow"
 redundant_field_names   = "allow"
@@ -63,6 +66,9 @@ authors.workspace       = true
 [dependencies]
 # emacs-regexp-automata.workspace = true
 emacs-regexp-syntax.workspace = true
+
+displaydoc.workspace    = true
+thiserror.workspace     = true
 
 [lints]
 workspace               = true
