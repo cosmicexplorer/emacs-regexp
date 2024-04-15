@@ -52,11 +52,13 @@ pub mod libc_backend {
     alloc::{AllocError, Allocator, Layout},
     ffi::c_void,
     fmt::{self, Write as _},
-    mem, ops,
+    mem,
     panic::PanicInfo,
     ptr::NonNull,
-    slice,
   };
+
+  #[cfg(not(test))]
+  use ::alloc::vec::Vec;
 
   #[derive(Debug, Copy, Clone, Default)]
   pub struct LibcAllocator;
@@ -152,57 +154,22 @@ pub mod libc_backend {
   }
 
   /// Mutable writable object that impls [`fmt::Write`].
-  struct CallocWriter {
-    src: NonNull<u8>,
-    len: usize,
-    used: usize,
+  struct LibcWriter {
+    data: Vec<u8, LibcAllocator>,
   }
 
-  impl CallocWriter {
-    /// Call [`libc::calloc()`] to allocate some zeroed memory.
-    pub fn calloc_for_len(len: usize) -> Option<Self> {
-      let p: *mut u8 = unsafe { mem::transmute(libc::calloc(len, mem::size_of::<u8>())) };
-      Some(Self {
-        src: NonNull::new(p)?,
-        len,
-        used: 0,
-      })
-    }
-
-    fn remaining(&self) -> usize { self.len - self.used }
-
-    fn slice(&mut self) -> &mut [u8] {
-      let rem = self.remaining();
-      let shifted = unsafe { self.src.add(self.used) };
-      unsafe { slice::from_raw_parts_mut(mem::transmute(shifted), rem) }
-    }
-
-    fn data(&self) -> &[u8] {
-      unsafe { slice::from_raw_parts(mem::transmute(self.src), self.used) }
-    }
-  }
-
-  impl ops::Drop for CallocWriter {
-    fn drop(&mut self) {
-      unsafe {
-        libc::free(mem::transmute(self.src));
+  impl LibcWriter {
+    pub fn with_initial_capacity(len: usize) -> Self {
+      Self {
+        data: Vec::with_capacity_in(len, LibcAllocator),
       }
     }
   }
 
-  impl fmt::Write for CallocWriter {
+  impl fmt::Write for LibcWriter {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-      let s = s.as_bytes();
-      let rem = self.slice();
-      if s.len() > rem.len() {
-        rem.copy_from_slice(&s[..rem.len()]);
-        self.used += rem.len();
-        Err(fmt::Error)
-      } else {
-        rem[..s.len()].copy_from_slice(s);
-        self.used += s.len();
-        Ok(())
-      }
+      self.data.extend_from_slice(s.as_bytes());
+      Ok(())
     }
   }
 
@@ -216,14 +183,7 @@ pub mod libc_backend {
   }
 
   pub fn do_panic(info: &PanicInfo) -> ! {
-    const MSG_ALLOC_LEN: usize = 4096;
-    let mut w = match CallocWriter::calloc_for_len(MSG_ALLOC_LEN) {
-      Some(w) => w,
-      None => {
-        let s = "could not allocate any memory!\n".as_bytes();
-        abort_after_writing(s)
-      },
-    };
+    let mut w = LibcWriter::with_initial_capacity(4096);
 
     if let Some(loc) = info.location() {
       let mut f = fmt::Formatter::new(&mut w);
@@ -245,7 +205,6 @@ pub mod libc_backend {
     }
     let _ = w.write_char('\n');
 
-    let s = w.data();
-    abort_after_writing(s)
+    abort_after_writing(&w.data)
   }
 }
