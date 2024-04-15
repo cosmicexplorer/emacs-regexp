@@ -27,6 +27,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(panic_info_message)]
 #![feature(non_null_convenience)]
 #![feature(alloc_layout_extra)]
+#![feature(maybe_uninit_write_slice)]
 #![feature(fmt_internals)]
 #![feature(core_intrinsics)]
 #![feature(lang_items)]

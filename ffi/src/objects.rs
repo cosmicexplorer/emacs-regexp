@@ -108,39 +108,23 @@ impl OwnedSlice {
 
   #[inline]
   pub fn from_data(data: &[u8], alloc: CallbackAllocator) -> Self {
-    /* Allocate exactly enough space with the custom allocator. */
-    let mut new_data: Box<[MaybeUninit<u8>], CallbackAllocator> =
-      Box::new_uninit_slice_in(data.len(), alloc);
-
     /* Initialize the allocation from the source data. */
-    let new_data: Box<[u8], CallbackAllocator> = unsafe {
-      /* Perform transmute type gymnastics to get a pointer to the start of the
-       * new allocation. */
-      let base: *mut u8 = {
-        let nd: &mut [MaybeUninit<u8>] = new_data.as_mut();
-        mem::transmute(nd.as_mut_ptr())
-      };
-      /* Write the source data into the newly allocated region, initializing the
-       * memory. */
-      ptr::copy_nonoverlapping(data.as_ptr(), base, data.len());
-      /* Get an initialized box for the newly initialized memory! */
-      new_data.assume_init()
+    let new_data: Box<[u8], CallbackAllocator> = {
+      /* Allocate exactly enough space with the custom allocator. */
+      let mut new_data: Box<[MaybeUninit<u8>], CallbackAllocator> =
+        Box::new_uninit_slice_in(data.len(), alloc);
+      /* Copy from the source data. */
+      MaybeUninit::copy_from_slice(new_data.as_mut(), data);
+      /* The data is now initialized. */
+      unsafe { new_data.assume_init() }
     };
 
     /* Convert the box into a raw pointer so it can be FFIed. */
     let (new_data, alloc): (*mut [u8], CallbackAllocator) = Box::into_raw_with_allocator(new_data);
 
-    /* Perform transmute type gymnastics to extract a c_void. */
-    let new_data: NonNull<c_void> = unsafe {
-      /* NB: .as_mut_ptr() here requires #![feature(slice_ptr_get)], because we are
-       * extracting a `*mut u8` from a `*mut [u8]`! This is safe and
-       * correct, but note the subtle type conversion! */
-      let new_data: *mut c_void = mem::transmute(new_data.as_mut_ptr());
-      NonNull::new_unchecked(new_data)
-    };
     Self {
       len: data.len(),
-      data: new_data,
+      data: NonNull::new(new_data.as_mut_ptr()).unwrap().cast(),
       alloc,
     }
   }
@@ -148,9 +132,8 @@ impl OwnedSlice {
   #[inline]
   pub fn into_box(self) -> Box<[u8], CallbackAllocator> {
     let Self { len, data, alloc } = self;
-    let p: NonNull<u8> = unsafe { mem::transmute(data) };
-    let p: NonNull<[u8]> = NonNull::slice_from_raw_parts(p, len);
-    unsafe { Box::from_raw_in(mem::transmute(p), alloc) }
+    let p: NonNull<[u8]> = NonNull::slice_from_raw_parts(data.cast(), len);
+    unsafe { Box::from_raw_in(p.as_ptr(), alloc) }
   }
 }
 
@@ -175,13 +158,8 @@ impl OwnedExpr {
     /* Convert the box into a raw pointer so it can be FFIed. */
     let (box_data, alloc): (*mut Expr<ByteEncoding, BoxAllocator>, CallbackAllocator) =
       Box::into_raw_with_allocator(boxed);
-    /* Perform transmute type gymnastics to extract a c_void. */
-    let box_data: NonNull<c_void> = unsafe {
-      let box_data: *mut c_void = mem::transmute(box_data);
-      NonNull::new_unchecked(box_data)
-    };
     Self {
-      data: box_data,
+      data: NonNull::new(box_data).unwrap().cast(),
       alloc,
     }
   }
@@ -189,7 +167,7 @@ impl OwnedExpr {
   #[inline]
   pub fn into_box(self) -> Box<Expr<ByteEncoding, BoxAllocator>, CallbackAllocator> {
     let Self { data, alloc } = self;
-    let p: *mut Expr<ByteEncoding, BoxAllocator> = unsafe { mem::transmute(data) };
+    let p: *mut Expr<ByteEncoding, BoxAllocator> = data.cast().as_ptr();
     unsafe { Box::from_raw_in(p, alloc) }
   }
 }
