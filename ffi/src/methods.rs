@@ -57,7 +57,7 @@ cfg_if! {
 /// asdf
 #[must_use]
 #[no_mangle]
-pub extern "C" fn compile(
+pub extern "C" fn rex_compile(
   pattern: &Pattern,
   alloc: &CallbackAllocator,
   out: &mut MaybeUninit<Matcher>,
@@ -89,7 +89,7 @@ pub extern "C" fn compile(
 
 #[must_use]
 #[no_mangle]
-pub extern "C" fn execute(
+pub extern "C" fn rex_execute(
   matcher: &Matcher,
   _alloc: &CallbackAllocator,
   input: &Input,
@@ -117,17 +117,17 @@ mod test {
     let c = CallbackAllocator::LIBC_ALLOC;
 
     let mut m: MaybeUninit<Matcher> = MaybeUninit::uninit();
-    assert_eq!(compile(&p, &c, &mut m), RegexpError::None);
+    assert_eq!(rex_compile(&p, &c, &mut m), RegexpError::None);
     let m = unsafe { m.assume_init() };
     let ast = format!("{:?}", m.as_matcher().expr);
     assert_eq!(ast, "Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] }");
 
     let i = Input { data: s };
-    assert_eq!(execute(&m, &c, &i), RegexpError::None);
+    assert_eq!(rex_execute(&m, &c, &i), RegexpError::None);
 
     let s2 = ForeignSlice::from_data(b"bsdf");
     let i2 = Input { data: s2 };
-    assert_eq!(execute(&m, &c, &i2), RegexpError::MatchError);
+    assert_eq!(rex_execute(&m, &c, &i2), RegexpError::MatchError);
   }
 
   #[test]
@@ -138,6 +138,6 @@ mod test {
     let c = CallbackAllocator::LIBC_ALLOC;
 
     let mut m: MaybeUninit<Matcher> = MaybeUninit::uninit();
-    assert_eq!(compile(&p, &c, &mut m), RegexpError::ParseError);
+    assert_eq!(rex_compile(&p, &c, &mut m), RegexpError::ParseError);
   }
 }

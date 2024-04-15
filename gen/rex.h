@@ -67,13 +67,13 @@ void always_panic(void) __attribute__((noreturn));
  * asdf
  */
 __attribute__((warn_unused_result))
-REX_RegexpError compile(const struct REX_Pattern *pattern,
-                        const struct REX_CallbackAllocator *alloc,
-                        struct REX_Matcher *out);
+REX_RegexpError rex_compile(const struct REX_Pattern *pattern,
+                            const struct REX_CallbackAllocator *alloc,
+                            struct REX_Matcher *out);
 
 __attribute__((warn_unused_result))
-REX_RegexpError execute(const struct REX_Matcher *matcher,
-                        const struct REX_CallbackAllocator *_alloc,
-                        const struct REX_Input *input);
+REX_RegexpError rex_execute(const struct REX_Matcher *matcher,
+                            const struct REX_CallbackAllocator *_alloc,
+                            const struct REX_Input *input);
 
 #endif /* rex_h */

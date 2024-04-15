@@ -20,12 +20,12 @@ int main() {
   c.free = rex_free;
 
   REX_Matcher m;
-  assert(compile(&p, &c, &m) == None);
+  assert(rex_compile(&p, &c, &m) == None);
 
   REX_Input i;
   i.data = s;
 
-  assert(execute(&m, &c, &i) == None);
+  assert(rex_execute(&m, &c, &i) == None);
 
   REX_ForeignSlice s2;
   s2.len = 4;
@@ -33,5 +33,5 @@ int main() {
   REX_Input i2;
   i2.data = s2;
 
-  assert(execute(&m, &c, &i2) == MatchError);
+  assert(rex_execute(&m, &c, &i2) == MatchError);
 }

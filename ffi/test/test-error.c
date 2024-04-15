@@ -20,5 +20,5 @@ int main() {
   c.free = rex_free;
 
   REX_Matcher m;
-  assert(compile(&p, &c, &m) == ParseError);
+  assert(rex_compile(&p, &c, &m) == ParseError);
 }
