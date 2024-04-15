@@ -28,9 +28,7 @@ use crate::objects::{
 };
 
 #[no_mangle]
-pub extern "C" fn always_panic() -> ! {
-  todo!("this always panics!");
-}
+pub extern "C" fn always_panic() -> ! { todo!("this always panics!") }
 
 cfg_if! {
   if #[cfg(feature = "libc")] {
