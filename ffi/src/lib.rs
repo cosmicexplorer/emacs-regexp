@@ -46,6 +46,7 @@ pub mod lang_items;
 pub mod methods;
 pub mod objects;
 
+/// cbindgen:ignore
 #[cfg(feature = "libc")]
 pub mod libc_backend {
   use core::{
@@ -173,12 +174,22 @@ pub mod libc_backend {
     }
   }
 
-  fn abort_after_writing(s: &[u8]) -> ! {
-    unsafe {
-      /* In case the first time returns without blocking, try again (do not try
-       * again upon error or success). */
-      while libc::write(libc::STDERR_FILENO, mem::transmute(s.as_ptr()), s.len()) == 0 {}
-      libc::abort()
+  fn abort_after_writing(mut s: &[u8]) -> ! {
+    loop {
+      if s.len() == 0 {
+        /* We are done, now abort. */
+        unsafe {
+          libc::abort();
+        }
+      }
+      match unsafe { libc::write(libc::STDERR_FILENO, s.as_ptr().cast(), s.len()) } {
+        /* Abort immediately upon error. */
+        rc if rc < 0 => unsafe { libc::abort() },
+        rc => {
+          /* Shift the input and try again. */
+          s = &s[(rc as usize)..];
+        },
+      }
     }
   }
 
