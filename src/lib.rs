@@ -44,6 +44,8 @@ use emacs_regexp_syntax::{
 };
 use thiserror::Error;
 
+pub mod nfa;
+
 #[derive(Debug, Clone, Display, Error)]
 pub enum RegexpError {
   /// parse error
