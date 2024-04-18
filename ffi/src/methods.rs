@@ -18,14 +18,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! FFI methods exposed over the C ABI.
 
-use core::{
-  ffi::c_void,
-  mem::{self, MaybeUninit},
-  ptr::NonNull,
-};
+use core::mem::{self, MaybeUninit};
 
-#[cfg(not(test))]
-use ::alloc::boxed::Box;
 use cfg_if::cfg_if;
 
 use crate::objects::{CallbackAllocator, Input, Matcher, Pattern, RegexpError};
@@ -62,7 +56,6 @@ pub extern "C" fn rex_compile(
   alloc: &CallbackAllocator,
   out: &mut MaybeUninit<Matcher>,
 ) -> RegexpError {
-  let (out_d, out_e) = Matcher::destructure_output_fields(out);
   let alloc = *alloc;
   let p = unsafe { pattern.as_pattern() };
 
@@ -74,14 +67,8 @@ pub extern "C" fn rex_compile(
         emacs_regexp::RegexpError::MatchError => unreachable!(),
       })?;
 
-    let m: Box<emacs_regexp::Matcher<CallbackAllocator, BoxAllocator>, CallbackAllocator> =
-      Box::new_in(m, alloc);
-
-    let (m, m_alloc) = Box::into_raw_with_allocator(m);
-    out_e.write(m_alloc);
-
-    let m: NonNull<c_void> = unsafe { NonNull::new_unchecked(m) }.cast();
-    out_d.write(m);
+    let m = Matcher::from_matcher(m, alloc);
+    out.write(m);
 
     Ok(())
   })

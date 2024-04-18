@@ -21,10 +21,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 use core::{
   alloc::{AllocError, Allocator, Layout},
   ffi::c_void,
-  mem::MaybeUninit,
-  ptr::{self, NonNull},
+  ptr::NonNull,
   slice,
 };
+
+#[cfg(not(test))]
+use ::alloc::boxed::Box;
 
 use crate::methods::BoxAllocator;
 
@@ -153,22 +155,17 @@ pub struct Matcher {
 }
 
 impl Matcher {
-  /// Get the offsets for each field within the allocated output space.
-  #[inline(always)]
-  pub fn destructure_output_fields(
-    out: &mut MaybeUninit<Self>,
-  ) -> (
-    &mut MaybeUninit<NonNull<c_void>>,
-    &mut MaybeUninit<CallbackAllocator>,
-  ) {
-    let o = out.as_mut_ptr();
-    unsafe {
-      let d: *mut NonNull<c_void> = ptr::addr_of_mut!((*o).inner);
-      let e: *mut CallbackAllocator = ptr::addr_of_mut!((*o).alloc);
-      (
-        d.as_uninit_mut().unwrap_unchecked(),
-        e.as_uninit_mut().unwrap_unchecked(),
-      )
+  #[inline]
+  pub fn from_matcher(
+    m: emacs_regexp::Matcher<CallbackAllocator, BoxAllocator>,
+    alloc: CallbackAllocator,
+  ) -> Self {
+    let m = Box::new_in(m, alloc);
+    let (m, m_alloc) = Box::into_raw_with_allocator(m);
+    let m: NonNull<c_void> = unsafe { NonNull::new_unchecked(m) }.cast();
+    Self {
+      inner: m,
+      alloc: m_alloc,
     }
   }
 
