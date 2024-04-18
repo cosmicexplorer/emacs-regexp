@@ -28,10 +28,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #include <stdint.h>
 
 enum REX_RegexpError {
-  None = 0,
-  ParseError = 1,
-  CompileError = 2,
-  MatchError = 3,
+  REX_REGEXP_ERROR_NONE = 0,
+  REX_REGEXP_ERROR_PARSE_ERROR = 1,
+  REX_REGEXP_ERROR_COMPILE_ERROR = 2,
+  REX_REGEXP_ERROR_MATCH_ERROR = 3,
 };
 typedef uint8_t REX_RegexpError;
 

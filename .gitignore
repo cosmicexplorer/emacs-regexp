@@ -1,3 +1,4 @@
 target/
 /c-target/
+/c-install/
 *.test-exe

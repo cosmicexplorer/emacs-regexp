@@ -1,4 +1,4 @@
-.PHONY: gen lib test-panic test-src test clean-gen clean clean-target
+.PHONY: gen lib install test-panic test-src test clean-gen clean clean-target
 
 
 CBINDGEN ?= cbindgen
@@ -29,6 +29,33 @@ $(SHARED_LIB) $(STATIC_LIB): $(CARGO_LOCK) $(RUST_FFI_SOURCES)
 	$(CARGO) build --release -p emacs-regexp-ffi --target-dir $(TARGET_DIR)
 
 lib: $(SHARED_LIB) $(STATIC_LIB)
+
+
+PREFIX ?= /usr/local
+INSTALL_INC := $(PREFIX)/include
+INSTALL_LIB := $(PREFIX)/lib
+INSTALL_PC := $(INSTALL_LIB)/pkgconfig
+
+$(INSTALL_LIB) $(INSTALL_PC) $(INSTALL_INC):
+	mkdir -pv $@
+
+INSTALL_HEADER := $(INSTALL_INC)/rex.h
+$(INSTALL_HEADER): $(INSTALL_INC) $(FFI_HEADER)
+	cp -v $(FFI_HEADER) $(INSTALL_HEADER)
+
+INSTALL_SHARED_LIB := $(INSTALL_LIB)/lib$(LIB_NAME).so
+$(INSTALL_SHARED_LIB): $(INSTALL_LIB) $(SHARED_LIB)
+	cp -v $(SHARED_LIB) $(INSTALL_SHARED_LIB)
+
+INSTALL_STATIC_LIB := $(INSTALL_LIB)/lib$(LIB_NAME).a
+$(INSTALL_STATIC_LIB): $(INSTALL_LIB) $(STATIC_LIB)
+	cp -v $(STATIC_LIB) $(INSTALL_STATIC_LIB)
+
+INSTALL_PC_OUTPUT := $(INSTALL_PC)/rex.pc
+$(INSTALL_PC_OUTPUT): $(INSTALL_PC) $(INSTALL_INC) $(INSTALL_LIB)
+	./generate-pc.sh $(realpath $(PREFIX)) > $(INSTALL_PC_OUTPUT)
+
+install: $(INSTALL_HEADER) $(INSTALL_SHARED_LIB) $(INSTALL_STATIC_LIB) $(INSTALL_PC_OUTPUT)
 
 
 TEST_SRC_DIR := $(FFI_DIR)/test

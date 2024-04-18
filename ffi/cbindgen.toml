@@ -50,6 +50,7 @@ derive_constructor      = true
 # FIXME: this does not appear to work at all?
 must_use                = "__attribute__((warn_unused))"
 deprecated              = "__attribute__((deprecated))"
+rename_variants         = "QualifiedScreamingSnakeCase"
 
 [ptr]
 # TODO: this works in clang, but gcc has no equivalent!
