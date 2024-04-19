@@ -23,7 +23,14 @@ use core::{alloc::Allocator, hash::BuildHasherDefault};
 use indexmap::IndexMap;
 use rustc_hash::FxHasher;
 
+
 pub struct State;
+
+pub enum Transition {
+  Epsilon,
+}
+
+pub struct Node {}
 
 
 struct M<A>

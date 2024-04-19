@@ -19,13 +19,14 @@ int main() {
   c.alloc = rex_alloc;
   c.free = rex_free;
 
-  REX_Matcher m;
-  assert(rex_compile(&p, &c, &m) == None);
+  REX_CompileResult r;
+  assert(rex_compile(&p, &c, &r) == REX_REGEXP_ERROR_NONE);
+  REX_Matcher m = r.matcher;
 
   REX_Input i;
   i.data = s;
 
-  assert(rex_execute(&m, &c, &i) == None);
+  assert(rex_execute(&m, &c, &i) == REX_REGEXP_ERROR_NONE);
 
   REX_ForeignSlice s2;
   s2.len = 4;
@@ -33,5 +34,5 @@ int main() {
   REX_Input i2;
   i2.data = s2;
 
-  assert(rex_execute(&m, &c, &i2) == MatchError);
+  assert(rex_execute(&m, &c, &i2) == REX_REGEXP_ERROR_MATCH_ERROR);
 }

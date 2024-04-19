@@ -55,6 +55,11 @@ typedef struct REX_Matcher {
   struct REX_CallbackAllocator alloc;
 } REX_Matcher;
 
+typedef union REX_CompileResult {
+  struct REX_Matcher matcher;
+  char *error;
+} REX_CompileResult;
+
 typedef struct REX_Input {
   struct REX_ForeignSlice data;
 } REX_Input;
@@ -69,7 +74,7 @@ void always_panic(void) __attribute__((noreturn));
 __attribute__((warn_unused_result))
 REX_RegexpError rex_compile(const struct REX_Pattern *pattern,
                             const struct REX_CallbackAllocator *alloc,
-                            struct REX_Matcher *out);
+                            union REX_CompileResult *out);
 
 __attribute__((warn_unused_result))
 REX_RegexpError rex_execute(const struct REX_Matcher *matcher,

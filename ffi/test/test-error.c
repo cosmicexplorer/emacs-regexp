@@ -1,5 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "rex.h"
 
@@ -19,6 +21,8 @@ int main() {
   c.alloc = rex_alloc;
   c.free = rex_free;
 
-  REX_Matcher m;
-  assert(rex_compile(&p, &c, &m) == ParseError);
+  REX_CompileResult r;
+  assert(rex_compile(&p, &c, &r) == REX_REGEXP_ERROR_PARSE_ERROR);
+  assert(strcmp(r.error, "ParseError { kind: UnmatchedCloseParen, at: 4 }") == 0);
+  c.free(c.ctx, r.error);
 }

@@ -27,9 +27,6 @@ use core::{
   ptr::NonNull,
 };
 
-#[cfg(not(test))]
-use ::alloc::vec::Vec;
-
 #[derive(Debug, Copy, Clone, Default)]
 pub struct LibcAllocator;
 static_assertions::const_assert_eq!(0, mem::size_of::<LibcAllocator>());
@@ -124,26 +121,6 @@ unsafe impl Allocator for LibcAllocator {
   }
 }
 
-/// Mutable writable object that impls [`fmt::Write`].
-struct LibcWriter {
-  data: Vec<u8, LibcAllocator>,
-}
-
-impl LibcWriter {
-  pub fn with_initial_capacity(len: usize) -> Self {
-    Self {
-      data: Vec::with_capacity_in(len, LibcAllocator),
-    }
-  }
-}
-
-impl fmt::Write for LibcWriter {
-  fn write_str(&mut self, s: &str) -> fmt::Result {
-    self.data.extend_from_slice(s.as_bytes());
-    Ok(())
-  }
-}
-
 fn abort_after_writing(mut s: &[u8]) -> ! {
   loop {
     if s.len() == 0 {
@@ -164,7 +141,7 @@ fn abort_after_writing(mut s: &[u8]) -> ! {
 }
 
 pub fn do_panic(info: &PanicInfo) -> ! {
-  let mut w = LibcWriter::with_initial_capacity(4096);
+  let mut w = crate::util::Writer::<LibcAllocator>::with_initial_capacity(4096);
 
   if let Some(loc) = info.location() {
     let mut f = fmt::Formatter::new(&mut w);
@@ -186,5 +163,5 @@ pub fn do_panic(info: &PanicInfo) -> ! {
   }
   let _ = w.write_char('\n');
 
-  abort_after_writing(&w.data)
+  abort_after_writing(w.data())
 }

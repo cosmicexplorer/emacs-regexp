@@ -30,34 +30,6 @@ use ::alloc::boxed::Box;
 
 use crate::methods::BoxAllocator;
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
-#[must_use]
-#[repr(u8)]
-pub enum RegexpError {
-  #[default]
-  None = 0,
-  ParseError = 1,
-  CompileError = 2,
-  MatchError = 3,
-}
-
-impl RegexpError {
-  #[inline(always)]
-  pub fn wrap(f: impl FnOnce() -> Result<(), Self>) -> Self {
-    match f() {
-      Ok(()) => Self::None,
-      Err(e) => {
-        assert_ne!(
-          e,
-          Self::None,
-          "regexp error of none was provided: this is a logic error"
-        );
-        e
-      },
-    }
-  }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct ForeignSlice {
@@ -147,7 +119,7 @@ unsafe impl Allocator for CallbackAllocator {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct Matcher {
   inner: NonNull<c_void>,

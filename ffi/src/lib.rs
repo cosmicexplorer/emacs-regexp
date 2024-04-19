@@ -49,3 +49,48 @@ pub mod objects;
 /// cbindgen:ignore
 #[cfg(feature = "libc")]
 pub mod libc_backend;
+
+/// cbindgen:ignore
+pub(crate) mod util {
+  use core::{alloc::Allocator, fmt};
+
+  #[cfg(not(test))]
+  use ::alloc::{boxed::Box, vec::Vec};
+
+  /// Mutable writable object that impls [`fmt::Write`].
+  pub struct Writer<A: Allocator> {
+    data: Vec<u8, A>,
+  }
+
+  impl<A: Allocator> Writer<A> {
+    pub fn with_initial_capacity_in(len: usize, alloc: A) -> Self {
+      Self {
+        data: Vec::with_capacity_in(len, alloc),
+      }
+    }
+
+    pub fn with_initial_capacity(len: usize) -> Self
+    where A: Default {
+      Self::with_initial_capacity_in(len, A::default())
+    }
+
+    pub fn write_null_byte(&mut self) -> fmt::Result {
+      self.data.push(b'\0');
+      Ok(())
+    }
+
+    pub fn data(&self) -> &[u8] { &self.data }
+
+    pub fn into_boxed(self) -> Box<[u8], A> {
+      let Self { data } = self;
+      data.into_boxed_slice()
+    }
+  }
+
+  impl<A: Allocator> fmt::Write for Writer<A> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+      self.data.extend_from_slice(s.as_bytes());
+      Ok(())
+    }
+  }
+}

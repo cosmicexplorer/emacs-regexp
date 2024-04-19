@@ -199,6 +199,8 @@ pub enum ParseErrorKind {
   InvalidExplicitGroupNumber,
   /// unmatched open paren
   UnmatchedOpenParen,
+  /// internal logic error
+  InternalLogicError,
 }
 
 /// parse error kind = {kind}, at = {at}
@@ -241,7 +243,10 @@ where A: Allocator+Clone {
   let mut currently_within_group_number: Option<Vec<u8, A>> = None;
 
   for (i, byte) in pattern.iter().enumerate() {
-    let (mut ctx_kind, mut components) = group_context.pop().unwrap();
+    let (mut ctx_kind, mut components) = group_context.pop().ok_or(ParseError {
+      kind: ParseErrorKind::InternalLogicError,
+      at: i,
+    })?;
 
     if previous_was_special_group {
       previous_was_special_group = false;
