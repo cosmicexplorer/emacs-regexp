@@ -156,6 +156,25 @@ pub extern "C" fn rex_compile(
 
 #[must_use]
 #[no_mangle]
+pub extern "C" fn rex_display_expr(
+  matcher: &Matcher,
+  alloc: &CallbackAllocator,
+) -> Option<NonNull<c_char>> {
+  let ea = error_allocator(*alloc);
+  let mut w = crate::util::Writer::with_initial_capacity_in(400, ea);
+  {
+    let mut f = fmt::Formatter::new(&mut w);
+    let _ = fmt::Debug::fmt(matcher.as_matcher(), &mut f);
+  }
+  let _ = w.write_null_byte();
+  let (p, _ea) = Box::into_raw_with_allocator(w.into_boxed());
+  let p: NonNull<[u8]> = unsafe { NonNull::new_unchecked(p) };
+  let p: NonNull<u8> = unsafe { NonNull::new_unchecked(p.as_mut_ptr()) };
+  Some(p.cast())
+}
+
+#[must_use]
+#[no_mangle]
 pub extern "C" fn rex_execute(
   matcher: &Matcher,
   _alloc: &CallbackAllocator,
@@ -187,7 +206,13 @@ mod test {
     assert_eq!(rex_compile(&p, &c, &mut m), RegexpError::None);
     let m = unsafe { m.assume_init().matcher };
     let ast = format!("{:?}", m.as_matcher().expr);
-    assert_eq!(ast, "Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] }");
+    let expected = "Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] }";
+    assert_eq!(ast, expected);
+    let e = rex_display_expr(&m, &c).unwrap();
+    let s_e: &str = unsafe { core::ffi::CStr::from_ptr(mem::transmute(e)) }
+      .to_str()
+      .unwrap();
+    assert_eq!(s_e, "Matcher { data: [97, 115, 100, 102], expr: Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] } }");
 
     let i = Input { data: s };
     assert_eq!(rex_execute(&m, &c, &i), RegexpError::None);
@@ -206,8 +231,7 @@ mod test {
 
     let mut m: MaybeUninit<CompileResult> = MaybeUninit::uninit();
     assert_eq!(rex_compile(&p, &c, &mut m), RegexpError::ParseError);
-    let e: Option<NonNull<c_char>> = unsafe { m.assume_init().error };
-    assert!(e.is_some());
+    let e: NonNull<c_char> = unsafe { m.assume_init().error }.unwrap();
     let s: &str = unsafe { core::ffi::CStr::from_ptr(mem::transmute(e)) }
       .to_str()
       .unwrap();
@@ -216,7 +240,7 @@ mod test {
     use core::alloc::Allocator;
     unsafe {
       c.deallocate(
-        e.unwrap().cast(),
+        e.cast(),
         core::alloc::Layout::from_size_align_unchecked(0, 0),
       );
     }

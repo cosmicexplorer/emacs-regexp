@@ -77,6 +77,10 @@ REX_RegexpError rex_compile(const struct REX_Pattern *pattern,
                             union REX_CompileResult *out);
 
 __attribute__((warn_unused_result))
+char *rex_display_expr(const struct REX_Matcher *matcher,
+                       const struct REX_CallbackAllocator *alloc);
+
+__attribute__((warn_unused_result))
 REX_RegexpError rex_execute(const struct REX_Matcher *matcher,
                             const struct REX_CallbackAllocator *_alloc,
                             const struct REX_Input *input);
