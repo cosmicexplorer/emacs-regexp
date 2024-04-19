@@ -44,28 +44,12 @@ cfg_if! {
     fn box_allocator(_alloc: CallbackAllocator) -> BoxAllocator {
       crate::libc_backend::LibcAllocator
     }
-
-    pub type ErrorAllocator = crate::libc_backend::LibcAllocator;
-    static_assertions::const_assert_eq!(0, mem::size_of::<ErrorAllocator>());
-
-    #[inline(always)]
-    fn error_allocator(_alloc: CallbackAllocator) -> ErrorAllocator {
-      crate::libc_backend::LibcAllocator
-    }
   } else {
     pub type BoxAllocator = CallbackAllocator;
     static_assertions::const_assert_eq!(24, mem::size_of::<BoxAllocator>());
 
     #[inline(always)]
     fn box_allocator(alloc: CallbackAllocator) -> BoxAllocator {
-      alloc
-    }
-
-    pub type ErrorAllocator = CallbackAllocator;
-    static_assertions::const_assert_eq!(24, mem::size_of::<ErrorAllocator>());
-
-    #[inline(always)]
-    fn error_allocator(alloc: CallbackAllocator) -> ErrorAllocator {
       alloc
     }
   }
@@ -121,14 +105,13 @@ pub extern "C" fn rex_compile(
       Ok(m) => m,
       Err(e) => match e {
         emacs_regexp::RegexpError::ParseError(e) => {
-          let ea = error_allocator(alloc);
-          let mut w = crate::util::Writer::with_initial_capacity_in(200, ea);
+          let mut w = crate::util::Writer::with_initial_capacity_in(200, alloc);
           {
             let mut f = fmt::Formatter::new(&mut w);
             let _ = fmt::Debug::fmt(&e, &mut f);
           }
           let _ = w.write_null_byte();
-          let (p, _ea) = Box::into_raw_with_allocator(w.into_boxed());
+          let (p, _alloc) = Box::into_raw_with_allocator(w.into_boxed());
           let p: NonNull<[u8]> = unsafe { NonNull::new_unchecked(p) };
           let p: NonNull<u8> = unsafe { NonNull::new_unchecked(p.as_mut_ptr()) };
           unsafe {
@@ -160,8 +143,7 @@ pub extern "C" fn rex_display_expr(
   matcher: &Matcher,
   alloc: &CallbackAllocator,
 ) -> Option<NonNull<c_char>> {
-  let ea = error_allocator(*alloc);
-  let mut w = crate::util::Writer::with_initial_capacity_in(400, ea);
+  let mut w = crate::util::Writer::with_initial_capacity_in(400, *alloc);
   {
     let mut f = fmt::Formatter::new(&mut w);
     let _ = fmt::Debug::fmt(matcher.as_matcher(), &mut f);
