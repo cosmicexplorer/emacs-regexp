@@ -28,8 +28,6 @@ use core::{
 #[cfg(not(test))]
 use ::alloc::boxed::Box;
 
-use crate::methods::BoxAllocator;
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct ForeignSlice {
@@ -129,7 +127,7 @@ pub struct Matcher {
 impl Matcher {
   #[inline]
   pub fn from_matcher(
-    m: emacs_regexp::Matcher<CallbackAllocator, BoxAllocator>,
+    m: emacs_regexp::Matcher<CallbackAllocator, CallbackAllocator>,
     alloc: CallbackAllocator,
   ) -> Self {
     let m = Box::new_in(m, alloc);
@@ -142,8 +140,8 @@ impl Matcher {
   }
 
   #[inline(always)]
-  pub fn as_matcher(&self) -> &emacs_regexp::Matcher<CallbackAllocator, BoxAllocator> {
-    let inner: *mut emacs_regexp::Matcher<CallbackAllocator, BoxAllocator> =
+  pub fn as_matcher(&self) -> &emacs_regexp::Matcher<CallbackAllocator, CallbackAllocator> {
+    let inner: *mut emacs_regexp::Matcher<CallbackAllocator, CallbackAllocator> =
       self.inner.cast().as_ptr();
     unsafe { &*inner }
   }

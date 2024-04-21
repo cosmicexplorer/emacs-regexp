@@ -18,42 +18,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! FFI methods exposed over the C ABI.
 
-use core::{
-  ffi::c_char,
-  fmt,
-  mem::{self, MaybeUninit},
-  ptr::NonNull,
-};
+use core::{ffi::c_char, fmt, mem::MaybeUninit, ptr::NonNull};
 
 #[cfg(not(test))]
 use ::alloc::boxed::Box;
-use cfg_if::cfg_if;
 
 use crate::objects::{CallbackAllocator, Input, Matcher, Pattern};
 
 #[cfg(feature = "panic-testing")]
 #[no_mangle]
 pub extern "C" fn always_panic() -> ! { todo!("this always panics!") }
-
-cfg_if! {
-  if #[cfg(feature = "libc")] {
-    pub type BoxAllocator = crate::libc_backend::LibcAllocator;
-    static_assertions::const_assert_eq!(0, mem::size_of::<BoxAllocator>());
-
-    #[inline(always)]
-    fn box_allocator(_alloc: CallbackAllocator) -> BoxAllocator {
-      crate::libc_backend::LibcAllocator
-    }
-  } else {
-    pub type BoxAllocator = CallbackAllocator;
-    static_assertions::const_assert_eq!(24, mem::size_of::<BoxAllocator>());
-
-    #[inline(always)]
-    fn box_allocator(alloc: CallbackAllocator) -> BoxAllocator {
-      alloc
-    }
-  }
-}
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[must_use]
@@ -100,8 +74,8 @@ pub extern "C" fn rex_compile(
   let alloc = *alloc;
   let p = unsafe { pattern.as_pattern() };
 
-  let m: emacs_regexp::Matcher<CallbackAllocator, BoxAllocator> =
-    match emacs_regexp::Matcher::compile(p, alloc, box_allocator(alloc)) {
+  let m: emacs_regexp::Matcher<CallbackAllocator, CallbackAllocator> =
+    match emacs_regexp::Matcher::compile(p, alloc, alloc) {
       Ok(m) => m,
       Err(e) => match e {
         emacs_regexp::RegexpError::ParseError(e) => {
