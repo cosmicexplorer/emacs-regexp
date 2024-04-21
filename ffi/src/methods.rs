@@ -22,7 +22,7 @@ use core::{ffi::c_char, fmt, mem::MaybeUninit, ptr::NonNull};
 
 use crate::{
   alloc_types::*,
-  objects::{CallbackAllocator, Input, Matcher, Pattern},
+  objects::{CallbackAllocator, Input, Matcher, Pattern, SharedAllocator},
 };
 
 #[cfg(feature = "panic-testing")]
@@ -74,8 +74,10 @@ pub extern "C" fn rex_compile(
   let alloc = *alloc;
   let p = unsafe { pattern.as_pattern() };
 
-  let m: emacs_regexp::Matcher<CallbackAllocator, CallbackAllocator> =
-    match emacs_regexp::Matcher::compile(p, alloc, alloc) {
+  let (shared_alloc, boxed_alloc, alloc) = SharedAllocator::from_alloc(alloc);
+
+  let m: emacs_regexp::Matcher<CallbackAllocator, SharedAllocator> =
+    match emacs_regexp::Matcher::compile(p, alloc, shared_alloc) {
       Ok(m) => m,
       Err(e) => match e {
         emacs_regexp::RegexpError::ParseError(e) => {
@@ -103,7 +105,7 @@ pub extern "C" fn rex_compile(
       },
     };
 
-  let m = Matcher::from_matcher(m, alloc);
+  let m = Matcher::from_matcher(m, alloc, boxed_alloc);
   unsafe {
     (*out.as_mut_ptr()).matcher = m;
   }

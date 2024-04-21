@@ -53,6 +53,7 @@ typedef struct REX_CallbackAllocator {
 typedef struct REX_Matcher {
   void *inner;
   struct REX_CallbackAllocator alloc;
+  struct REX_CallbackAllocator *boxed_alloc;
 } REX_Matcher;
 
 typedef union REX_CompileResult {

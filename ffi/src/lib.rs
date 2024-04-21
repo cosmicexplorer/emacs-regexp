@@ -40,6 +40,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #[cfg(not(test))]
 extern crate alloc;
 
+#[allow(unused_imports)]
 mod alloc_types {
   /* no_std/no_main is enabled except for test environments, so we need to use
    * the special imports from the extern alloc crate. */
@@ -47,8 +48,9 @@ mod alloc_types {
     if #[cfg(test)] {
       pub use Box;
       pub use Vec;
+      pub use std::sync::Arc;
     } else {
-      pub use ::alloc::{boxed::Box, vec::Vec};
+      pub use ::alloc::{boxed::Box, vec::Vec, sync::Arc};
     }
   }
 }

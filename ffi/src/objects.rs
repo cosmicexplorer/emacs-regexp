@@ -21,6 +21,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 use core::{
   alloc::{AllocError, Allocator, Layout},
   ffi::c_void,
+  mem,
+  pin::Pin,
   ptr::NonNull,
   slice,
 };
@@ -117,17 +119,50 @@ unsafe impl Allocator for CallbackAllocator {
 }
 
 #[derive(Debug, Copy, Clone)]
+#[repr(transparent)]
+pub struct SharedAllocator(pub *const CallbackAllocator);
+static_assertions::assert_eq_size!(usize, SharedAllocator);
+
+impl SharedAllocator {
+  pub fn from_alloc(
+    alloc: CallbackAllocator,
+  ) -> (Self, NonNull<CallbackAllocator>, CallbackAllocator) {
+    let boxed_alloc: Box<CallbackAllocator, CallbackAllocator> = Box::new_in(alloc, alloc);
+    let (boxed_alloc, alloc) = Box::into_raw_with_allocator(boxed_alloc);
+    let boxed_alloc: NonNull<CallbackAllocator> = unsafe { NonNull::new_unchecked(boxed_alloc) };
+    (
+      Self(unsafe { mem::transmute(boxed_alloc) }),
+      boxed_alloc,
+      alloc,
+    )
+  }
+}
+
+unsafe impl Allocator for SharedAllocator {
+  #[inline(always)]
+  fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+    unsafe { &*self.0 }.allocate(layout)
+  }
+  #[inline(always)]
+  unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+    (&*self.0).deallocate(ptr, layout)
+  }
+}
+
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct Matcher {
   inner: NonNull<c_void>,
   alloc: CallbackAllocator,
+  boxed_alloc: NonNull<CallbackAllocator>,
 }
 
 impl Matcher {
   #[inline]
   pub fn from_matcher(
-    m: emacs_regexp::Matcher<CallbackAllocator, CallbackAllocator>,
+    m: emacs_regexp::Matcher<CallbackAllocator, SharedAllocator>,
     alloc: CallbackAllocator,
+    boxed_alloc: NonNull<CallbackAllocator>,
   ) -> Self {
     let m = Box::new_in(m, alloc);
     let (m, m_alloc) = Box::into_raw_with_allocator(m);
@@ -135,14 +170,38 @@ impl Matcher {
     Self {
       inner: m,
       alloc: m_alloc,
+      boxed_alloc,
     }
   }
 
   #[inline(always)]
-  pub fn as_matcher(&self) -> &emacs_regexp::Matcher<CallbackAllocator, CallbackAllocator> {
-    let inner: *mut emacs_regexp::Matcher<CallbackAllocator, CallbackAllocator> =
+  pub fn as_matcher(&self) -> &emacs_regexp::Matcher<CallbackAllocator, SharedAllocator> {
+    let inner: *mut emacs_regexp::Matcher<CallbackAllocator, SharedAllocator> =
       self.inner.cast().as_ptr();
     unsafe { &*inner }
+  }
+
+  /// # Safety:
+  /// The pinned box output must be dropped **AFTER** the boxed `Matcher`! This
+  /// is because [`SharedAllocator`] is WILDLY unsafe and simply keeps track of
+  /// a single pointer!
+  pub unsafe fn into_boxed(
+    self,
+  ) -> (
+    Box<emacs_regexp::Matcher<CallbackAllocator, SharedAllocator>, CallbackAllocator>,
+    Pin<Box<CallbackAllocator, CallbackAllocator>>,
+  ) {
+    let Self {
+      inner,
+      alloc,
+      boxed_alloc,
+    } = self;
+    let inner: *mut emacs_regexp::Matcher<CallbackAllocator, SharedAllocator> =
+      inner.cast().as_ptr();
+    let inner = unsafe { Box::from_raw_in(inner, alloc) };
+    let shared_alloc =
+      Box::into_pin(unsafe { Box::from_raw_in(mem::transmute(boxed_alloc), alloc) });
+    (inner, shared_alloc)
   }
 }
 
