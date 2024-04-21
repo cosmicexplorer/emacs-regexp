@@ -44,10 +44,8 @@ pub mod literals {
 pub mod character_alternatives {
   use core::{alloc::Allocator, fmt};
 
-  #[cfg(not(test))]
-  use ::alloc::vec::Vec;
-
   use super::literals::single::SingleLiteral;
+  use crate::alloc_types::*;
 
   /// See <https://www.gnu.org/software/emacs/manual/html_node/elisp/Char-Classes.html#Char-Classes>.
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -329,9 +327,6 @@ pub mod char_properties {
 pub mod expr {
   use core::{alloc::Allocator, fmt};
 
-  #[cfg(not(test))]
-  use ::alloc::{boxed::Box, vec::Vec};
-
   use super::{
     anchors::Anchor,
     char_properties::CharPropertiesSelector,
@@ -340,7 +335,7 @@ pub mod expr {
     literals::single::{escapes::Escaped, SingleLiteral},
     postfix_operators::PostfixOp,
   };
-  use crate::encoding::LiteralEncoding;
+  use crate::{alloc_types::*, encoding::LiteralEncoding};
 
   #[derive(Clone)]
   pub enum SingleCharSelector<LSi, A>

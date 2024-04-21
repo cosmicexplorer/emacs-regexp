@@ -20,10 +20,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{ffi::c_char, fmt, mem::MaybeUninit, ptr::NonNull};
 
-#[cfg(not(test))]
-use ::alloc::boxed::Box;
-
-use crate::objects::{CallbackAllocator, Input, Matcher, Pattern};
+use crate::{
+  alloc_types::*,
+  objects::{CallbackAllocator, Input, Matcher, Pattern},
+};
 
 #[cfg(feature = "panic-testing")]
 #[no_mangle]
@@ -149,6 +149,8 @@ pub extern "C" fn rex_execute(
 
 #[cfg(test)]
 mod test {
+  use core::mem;
+
   use super::*;
   use crate::objects::ForeignSlice;
 

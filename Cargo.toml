@@ -71,6 +71,7 @@ authors.workspace       = true
 # emacs-regexp-automata.workspace = true
 emacs-regexp-syntax.workspace = true
 
+cfg-if.workspace        = true
 displaydoc.workspace    = true
 indexmap.workspace      = true
 rustc-hash.workspace    = true

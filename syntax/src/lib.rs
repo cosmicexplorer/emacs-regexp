@@ -29,7 +29,21 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! ???
 
+#[cfg(not(test))]
 extern crate alloc;
+
+mod alloc_types {
+  /* no_std/no_main is enabled except for test environments, so we need to use
+   * the special imports from the extern alloc crate. */
+  cfg_if::cfg_if! {
+    if #[cfg(test)] {
+      pub use Box;
+      pub use Vec;
+    } else {
+      pub use ::alloc::{boxed::Box, vec::Vec};
+    }
+  }
+}
 
 pub mod ast;
 pub mod parser;

@@ -37,7 +37,21 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! C ABI interface to expose to C code such as emacs.
 
+#[cfg(not(test))]
 extern crate alloc;
+
+mod alloc_types {
+  /* no_std/no_main is enabled except for test environments, so we need to use
+   * the special imports from the extern alloc crate. */
+  cfg_if::cfg_if! {
+    if #[cfg(test)] {
+      pub use Box;
+      pub use Vec;
+    } else {
+      pub use ::alloc::{boxed::Box, vec::Vec};
+    }
+  }
+}
 
 /// cbindgen:ignore
 #[cfg(not(test))]
@@ -54,8 +68,7 @@ pub mod libc_backend;
 pub(crate) mod util {
   use core::{alloc::Allocator, fmt};
 
-  #[cfg(not(test))]
-  use ::alloc::{boxed::Box, vec::Vec};
+  use crate::alloc_types::*;
 
   /// Mutable writable object that impls [`fmt::Write`].
   pub struct Writer<A: Allocator> {

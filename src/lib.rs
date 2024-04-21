@@ -29,12 +29,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
+#[cfg(not(test))]
 extern crate alloc;
 
 use core::{alloc::Allocator, fmt, mem::MaybeUninit};
 
-#[cfg(not(test))]
-use ::alloc::boxed::Box;
 use displaydoc::Display;
 pub use emacs_regexp_syntax as syntax;
 use emacs_regexp_syntax::{
@@ -45,6 +44,21 @@ use emacs_regexp_syntax::{
 use thiserror::Error;
 
 pub mod nfa;
+
+#[allow(unused_imports)]
+mod alloc_types {
+  /* no_std/no_main is enabled except for test environments, so we need to use
+   * the special imports from the extern alloc crate. */
+  cfg_if::cfg_if! {
+    if #[cfg(test)] {
+      pub use Box;
+      pub use Vec;
+    } else {
+      pub use ::alloc::{boxed::Box, vec::Vec};
+    }
+  }
+}
+use alloc_types::*;
 
 #[derive(Debug, Clone, Display, Error)]
 pub enum RegexpError {

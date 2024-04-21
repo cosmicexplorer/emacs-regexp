@@ -25,8 +25,7 @@ use core::{
   slice,
 };
 
-#[cfg(not(test))]
-use ::alloc::boxed::Box;
+use crate::alloc_types::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(C)]

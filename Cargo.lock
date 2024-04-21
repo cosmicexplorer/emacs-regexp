@@ -29,6 +29,7 @@ dependencies = [
 name = "emacs-regexp"
 version = "0.0.0"
 dependencies = [
+ "cfg-if",
  "displaydoc",
  "emacs-regexp-syntax",
  "indexmap",
@@ -59,6 +60,7 @@ dependencies = [
 name = "emacs-regexp-syntax"
 version = "0.0.0"
 dependencies = [
+ "cfg-if",
  "displaydoc",
  "thiserror",
 ]

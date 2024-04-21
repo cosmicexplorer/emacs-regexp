@@ -20,12 +20,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{alloc::Allocator, mem, num::NonZeroUsize, str};
 
-#[cfg(not(test))]
-use ::alloc::{boxed::Box, vec::Vec};
 use displaydoc::Display;
 use thiserror::Error;
 
 use crate::{
+  alloc_types::*,
   ast::{
     anchors::{Anchor, EndAnchor, PointAnchor, StartAnchor, WordAnchor},
     char_properties::{
@@ -904,22 +903,22 @@ where A: Allocator+Clone {
 
 #[cfg(test)]
 mod test {
-  use std::alloc::System;
+  use std::alloc::Global;
 
   use super::*;
 
   #[test]
   fn parse_lit() {
-    let parsed = parse_bytes(b"a", System).unwrap();
+    let parsed = parse_bytes(b"a", Global).unwrap();
     assert_eq!(
       parsed,
-      Expr::<ByteEncoding, System>::SingleLiteral(SingleLiteral(b'a'))
+      Expr::<ByteEncoding, Global>::SingleLiteral(SingleLiteral(b'a'))
     );
 
-    let parsed = parse_bytes(b"\\a", System).unwrap();
+    let parsed = parse_bytes(b"\\a", Global).unwrap();
     assert_eq!(
       parsed,
-      Expr::<ByteEncoding, System>::EscapedLiteral(Escaped(SingleLiteral(b'a')))
+      Expr::<ByteEncoding, Global>::EscapedLiteral(Escaped(SingleLiteral(b'a')))
     );
   }
 }
