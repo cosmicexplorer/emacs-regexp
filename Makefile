@@ -74,6 +74,7 @@ DEV_STATIC_LIB := $(DEV_LIB_DIR)/lib$(LIB_NAME).a
 _BUILD_PANIC_ARGS := --features panic-testing
 _PANIC_DEFINES := -DPANIC_TESTING
 
+# Build libs with debuginfo and panic methods in order to verify panic behavior.
 $(DEV_SHARED_LIB) $(DEV_STATIC_LIB): $(CARGO_LOCK) $(RUST_FFI_SOURCES)
 	$(CARGO) build -p emacs-regexp-ffi $(_BUILD_PANIC_ARGS) --target-dir $(TARGET_DIR)
 
@@ -84,7 +85,8 @@ $(DEV_SHARED_LIB) $(DEV_STATIC_LIB): $(CARGO_LOCK) $(RUST_FFI_SOURCES)
 		-L$(DEV_LIB_DIR) -l$(LIB_NAME) -Wl,-rpath $(DEV_ABSOLUTE_LIB_DIR) \
 		$(_PANIC_DEFINES) \
 		-Og -g \
-		$< -o $@
+		$< \
+		-o $@
 
 test-panic: $(PANIC_TEST_OUT)
 	@echo '+++BEGIN PANIC TESTING+++' >&2

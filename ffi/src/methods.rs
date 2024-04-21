@@ -172,7 +172,7 @@ mod test {
     let s_e: &str = unsafe { core::ffi::CStr::from_ptr(mem::transmute(e)) }
       .to_str()
       .unwrap();
-    assert_eq!(s_e, "Matcher { data: [97, 115, 100, 102], expr: Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] } }");
+    assert_eq!(s_e, "Matcher { data: \"asdf\", expr: Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] } }");
 
     let i = Input { data: s };
     assert_eq!(rex_execute(&m, &c, &i), RegexpError::None);

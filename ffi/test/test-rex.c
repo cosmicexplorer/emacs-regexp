@@ -25,7 +25,7 @@ int main() {
   REX_Matcher m = r.matcher;
 
   char* expr = rex_display_expr(&m, &c);
-  assert(strcmp(expr, "Matcher { data: [97, 115, 100, 102], expr: Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] } }") == 0);
+  assert(strcmp(expr, "Matcher { data: \"asdf\", expr: Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] } }") == 0);
 
   REX_Input i;
   i.data = s;

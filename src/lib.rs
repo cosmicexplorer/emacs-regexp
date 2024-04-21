@@ -32,7 +32,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #[cfg(not(test))]
 extern crate alloc;
 
-use core::{alloc::Allocator, fmt, mem::MaybeUninit};
+use core::{alloc::Allocator, fmt, mem::MaybeUninit, str};
 
 use displaydoc::Display;
 pub use emacs_regexp_syntax as syntax;
@@ -97,6 +97,7 @@ where
 {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let Self { data, expr } = self;
+    let data = str::from_utf8(&data).expect("TODO: non-utf8 patterns!");
     write!(f, "Matcher {{ data: {:?}, expr: {:?} }}", data, expr)
   }
 }
