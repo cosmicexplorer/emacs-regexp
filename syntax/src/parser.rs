@@ -1043,6 +1043,8 @@ where
 mod test {
   use std::alloc::Global;
 
+  use proptest::prelude::*;
+
   use super::*;
 
   #[test]
@@ -1129,5 +1131,12 @@ mod test {
       })),
     });
     assert_eq!(&format!("{}", parsed), "a\\{2\\}");
+  }
+
+  proptest! {
+    #[test]
+    fn ooo(s in "a+") {
+      prop_assert!(!s.is_empty());
+    }
   }
 }

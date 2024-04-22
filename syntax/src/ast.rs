@@ -30,12 +30,29 @@ pub mod literals {
   pub mod single {
     use core::{cmp, fmt, hash};
 
+    #[cfg(test)]
+    use proptest::{prelude::*, strategy::Map};
+
     use crate::encoding::LiteralEncoding;
 
     #[derive(Copy)]
     #[repr(transparent)]
     pub struct SingleLiteral<L>(pub L::Single)
     where L: LiteralEncoding;
+
+    #[cfg(test)]
+    impl<L> Arbitrary for SingleLiteral<L>
+    where
+      L: LiteralEncoding,
+      L::Single: Arbitrary,
+    {
+      type Parameters = <L::Single as Arbitrary>::Parameters;
+      type Strategy = Map<<L::Single as Arbitrary>::Strategy, fn(L::Single) -> Self>;
+
+      fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        <L::Single as Arbitrary>::arbitrary_with(args).prop_map(|c| Self(c))
+      }
+    }
 
     impl<L> Clone for SingleLiteral<L>
     where L: LiteralEncoding
@@ -88,11 +105,29 @@ pub mod literals {
     pub mod escapes {
       use core::{cmp, fmt, hash};
 
+      #[cfg(test)]
+      use proptest::{prelude::*, strategy::Map};
+
       use super::{LiteralEncoding, SingleLiteral};
 
       #[derive(Copy)]
       pub struct Escaped<L>(pub SingleLiteral<L>)
       where L: LiteralEncoding;
+
+      #[cfg(test)]
+      impl<L> Arbitrary for Escaped<L>
+      where
+        L: LiteralEncoding,
+        L::Single: Arbitrary,
+      {
+        type Parameters = <SingleLiteral<L> as Arbitrary>::Parameters;
+        type Strategy =
+          Map<<SingleLiteral<L> as Arbitrary>::Strategy, fn(SingleLiteral<L>) -> Self>;
+
+        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+          <SingleLiteral<L> as Arbitrary>::arbitrary_with(args).prop_map(|c| Self(c))
+        }
+      }
 
       impl<L> Clone for Escaped<L>
       where L: LiteralEncoding
@@ -149,11 +184,15 @@ pub mod literals {
 pub mod character_alternatives {
   use core::{alloc::Allocator, fmt, hash};
 
+  #[cfg(test)]
+  use {proptest::prelude::*, proptest_derive::Arbitrary};
+
   use super::literals::single::SingleLiteral;
   use crate::{alloc_types::*, encoding::LiteralEncoding};
 
   /// See <https://www.gnu.org/software/emacs/manual/html_node/elisp/Char-Classes.html#Char-Classes>.
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(Arbitrary))]
   pub enum CharacterClass {
     /// `[:ascii:]`
     ASCII,
@@ -1102,4 +1141,11 @@ mod test {
     };
     assert_eq!(&format!("{}", e), "asdf+aa");
   }
+}
+
+#[cfg(test)]
+mod proptest_strategies {
+  use proptest::prelude::*;
+
+  use super::{expr::*, groups::*, literals::single::*, postfix_operators::*};
 }
