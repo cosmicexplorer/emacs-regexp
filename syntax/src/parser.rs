@@ -1037,7 +1037,7 @@ mod test {
   use super::*;
 
   #[test]
-  fn parse_lit() {
+  fn parse_single_lit() {
     let parsed = parse_bytes(b"a", Global).unwrap();
     assert_eq!(
       parsed,
@@ -1049,7 +1049,10 @@ mod test {
       parsed,
       Expr::<ByteEncoding, Global>::EscapedLiteral(Escaped(SingleLiteral(b'a')))
     );
+  }
 
+  #[test]
+  fn parse_plus_postfix() {
     let parsed = parse_bytes(b"asdf\\(.\\)+a", Global).unwrap();
     assert_eq!(parsed, Expr::<ByteEncoding, Global>::Concatenation {
       components: vec![
@@ -1105,5 +1108,11 @@ mod test {
       ]
     });
     assert_eq!(&format!("{}", parsed), "asdf+aa");
+  }
+
+  #[test]
+  fn parse_repeat() {
+    let _parsed = parse_bytes(b"asdf+a.a\\{2\\}", Global).unwrap();
+    ()
   }
 }
