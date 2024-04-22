@@ -261,6 +261,8 @@ pub mod character_alternatives {
     }
   }
 
+  /* FIXME: MaybeEscaped<L> enum to capture escaped char alt components! */
+
   #[derive(Copy)]
   pub enum CharAltComponent<L>
   where L: LiteralEncoding
@@ -287,10 +289,19 @@ pub mod character_alternatives {
     type Strategy = Union<BoxedStrategy<Self>>;
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-      let s = <SingleLiteral<L> as Arbitrary>::arbitrary_with(args);
+      let s = <SingleLiteral<L> as Arbitrary>::arbitrary_with(args).prop_filter(
+        "FIXME: rejecting dashes and square braces!",
+        |SingleLiteral(sl)| {
+          !(*sl == L::DASH || *sl == L::OPEN_SQUARE_BRACE || *sl == L::CLOSE_SQUARE_BRACE)
+        },
+      );
       Union::new([
         s.clone().prop_map(|s| Self::SingleLiteral(s)).boxed(),
         (s.clone(), s.clone())
+          .prop_filter(
+            "rejecting invalid literal ranges",
+            |(SingleLiteral(s1), SingleLiteral(s2))| s1 < s2,
+          )
           .prop_map(|(s1, s2)| Self::LiteralRange {
             left: s1,
             right: s2,
@@ -942,7 +953,6 @@ pub mod expr {
   {
     Prop(CharPropertiesSelector),
     Alt(CharacterAlternative<L, A>),
-    Esc(Escaped<L>),
     /// `.`
     ///
     /// Any char except newline.
@@ -955,22 +965,18 @@ pub mod expr {
     L: LiteralEncoding+'static,
     L::Single: Arbitrary,
     <L::Single as Arbitrary>::Strategy: Clone,
-    <L::Single as Arbitrary>::Parameters: Clone,
     A: Allocator+Clone+Default+'static,
   {
     type Parameters = <CharacterAlternative<L, A> as Arbitrary>::Parameters;
     type Strategy = Union<BoxedStrategy<Self>>;
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-      let (ref single_args, _, _) = args;
-      let e = <Escaped<L> as Arbitrary>::arbitrary_with(single_args.clone());
       let s = <CharacterAlternative<L, A> as Arbitrary>::arbitrary_with(args);
       Union::new([
         any::<CharPropertiesSelector>()
           .prop_map(|cps| Self::Prop(cps))
           .boxed(),
         s.prop_map(|ca| Self::Alt(ca)).boxed(),
-        e.prop_map(|e| Self::Esc(e)).boxed(),
         Just(Self::Dot).boxed(),
       ])
     }
@@ -985,7 +991,6 @@ pub mod expr {
       match self {
         Self::Prop(cps) => Self::Prop(cps.clone()),
         Self::Alt(ca) => Self::Alt(ca.clone()),
-        Self::Esc(esc) => Self::Esc(esc.clone()),
         Self::Dot => Self::Dot,
       }
     }
@@ -1001,7 +1006,6 @@ pub mod expr {
       match self {
         Self::Prop(cps) => write!(f, "SingleCharSelector::Prop({:?})", cps),
         Self::Alt(ca) => write!(f, "SingleCharSelector::Alt({:?})", ca),
-        Self::Esc(esc) => write!(f, "SingleCharSelector::Esc({:?})", esc),
         Self::Dot => write!(f, "SingleCharSelector::Dot"),
       }
     }
@@ -1016,7 +1020,6 @@ pub mod expr {
       match self {
         Self::Prop(cps) => write!(f, "{}", cps),
         Self::Alt(ca) => write!(f, "{}", ca),
-        Self::Esc(esc) => write!(f, "{}", esc),
         Self::Dot => write!(f, "."),
       }
     }
@@ -1031,7 +1034,6 @@ pub mod expr {
       match (self, other) {
         (Self::Prop(a), Self::Prop(b)) => a == b,
         (Self::Alt(a), Self::Alt(b)) => a == b,
-        (Self::Esc(a), Self::Esc(b)) => a == b,
         (Self::Dot, Self::Dot) => true,
         _ => false,
       }
@@ -1103,8 +1105,32 @@ pub mod expr {
       let single_args = single_args.clone();
       let alloc = Just(alloc.clone());
 
-      let sl = <SingleLiteral<L> as Arbitrary>::arbitrary_with(single_args.clone());
-      let e = <Escaped<L> as Arbitrary>::arbitrary_with(single_args);
+      let sl = <SingleLiteral<L> as Arbitrary>::arbitrary_with(single_args).prop_filter(
+        "these are all escaped!",
+        |SingleLiteral(sl)| {
+          !(*sl == L::BACKSLASH
+            || *sl == L::QUESTION
+            || *sl == L::PLUS
+            || *sl == L::STAR
+            || *sl == L::CARAT
+            || *sl == L::DOLLAR
+            || *sl == L::DOT
+            || *sl == L::OPEN_SQUARE_BRACE
+            || *sl == L::CLOSE_SQUARE_BRACE)
+        },
+      );
+      let e = Union::new([
+        Just(L::BACKSLASH),
+        Just(L::QUESTION),
+        Just(L::PLUS),
+        Just(L::STAR),
+        Just(L::CARAT),
+        Just(L::DOLLAR),
+        Just(L::DOT),
+        Just(L::OPEN_SQUARE_BRACE),
+        Just(L::CLOSE_SQUARE_BRACE),
+      ])
+      .prop_map(|el| Escaped(SingleLiteral(el)));
       let scs = <SingleCharSelector<L, A> as Arbitrary>::arbitrary_with(scs_args);
 
       let leaves = Union::new([
@@ -1309,13 +1335,15 @@ pub mod expr {
 #[cfg(test)]
 mod test {
   use super::{expr::*, groups::*, literals::single::*, postfix_operators::*};
-  use crate::encoding::ByteEncoding;
+  use crate::encoding::UnicodeEncoding;
 
   #[test]
   fn expr_display() {
     let e = Expr::Concatenation {
       components: vec![
-        Box::new(Expr::<ByteEncoding, _>::SingleLiteral(SingleLiteral(b'a'))),
+        Box::new(Expr::<UnicodeEncoding, _>::SingleLiteral(SingleLiteral(
+          'a',
+        ))),
         Box::new(Expr::Postfix {
           inner: Box::new(Expr::Group {
             kind: GroupKind::Basic,
@@ -1323,8 +1351,8 @@ mod test {
               cases: vec![
                 Box::new(Expr::Concatenation {
                   components: vec![
-                    Box::new(Expr::SingleLiteral(SingleLiteral(b's'))),
-                    Box::new(Expr::SingleLiteral(SingleLiteral(b'd'))),
+                    Box::new(Expr::SingleLiteral(SingleLiteral('s'))),
+                    Box::new(Expr::SingleLiteral(SingleLiteral('d'))),
                   ],
                 }),
                 Box::new(Expr::Concatenation {
@@ -1336,7 +1364,7 @@ mod test {
                         greediness: GreedyBehavior::Greedy,
                       }),
                     }),
-                    Box::new(Expr::SingleLiteral(SingleLiteral(b'e'))),
+                    Box::new(Expr::SingleLiteral(SingleLiteral('e'))),
                   ],
                 }),
               ],
@@ -1347,25 +1375,25 @@ mod test {
             greediness: GreedyBehavior::NonGreedy,
           }),
         }),
-        Box::new(Expr::SingleLiteral(SingleLiteral(b'f'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral('f'))),
       ],
     };
     assert_eq!(&format!("{}", e), "a\\(sd\\|.?e\\)+?f");
 
-    let e = Expr::<ByteEncoding, _>::Concatenation {
+    let e = Expr::<UnicodeEncoding, _>::Concatenation {
       components: vec![
-        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
-        Box::new(Expr::SingleLiteral(SingleLiteral(b's'))),
-        Box::new(Expr::SingleLiteral(SingleLiteral(b'd'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral('a'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral('s'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral('d'))),
         Box::new(Expr::Postfix {
-          inner: Box::new(Expr::SingleLiteral(SingleLiteral(b'f'))),
+          inner: Box::new(Expr::SingleLiteral(SingleLiteral('f'))),
           op: PostfixOp::Simple(MaybeGreedyOperator {
             greediness: GreedyBehavior::Greedy,
             op: SimpleOperator::Plus,
           }),
         }),
-        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
-        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral('a'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral('a'))),
       ],
     };
     assert_eq!(&format!("{}", e), "asdf+aa");
@@ -1373,8 +1401,11 @@ mod test {
 }
 
 #[cfg(test)]
-mod proptest_strategies {
+pub(crate) mod proptest_strategies {
   use proptest::prelude::*;
 
   use super::{expr::*, groups::*, literals::single::*, postfix_operators::*};
+  use crate::encoding::UnicodeEncoding;
+
+  /* prop_compose! {} */
 }

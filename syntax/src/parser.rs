@@ -42,7 +42,7 @@ use crate::{
     },
     Negation,
   },
-  encoding::{ByteEncoding, LiteralEncoding},
+  encoding::{ByteEncoding, LiteralEncoding, UnicodeEncoding},
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1055,10 +1055,22 @@ mod test {
       Expr::<ByteEncoding, Global>::SingleLiteral(SingleLiteral(b'a'))
     );
 
+    let parsed = parse::<UnicodeEncoding, _>("a", Global).unwrap();
+    assert_eq!(
+      parsed,
+      Expr::<UnicodeEncoding, Global>::SingleLiteral(SingleLiteral('a'))
+    );
+
     let parsed = parse::<ByteEncoding, _>(b"\\a", Global).unwrap();
     assert_eq!(
       parsed,
       Expr::<ByteEncoding, Global>::EscapedLiteral(Escaped(SingleLiteral(b'a')))
+    );
+
+    let parsed = parse::<UnicodeEncoding, _>("\\a", Global).unwrap();
+    assert_eq!(
+      parsed,
+      Expr::<UnicodeEncoding, Global>::EscapedLiteral(Escaped(SingleLiteral('a')))
     );
   }
 
