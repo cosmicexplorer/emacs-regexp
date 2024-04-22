@@ -238,8 +238,9 @@ where
   let mut previous_was_special_group: bool = false;
   let mut currently_within_group_number: Option<Vec<L::Single, A>> = None;
 
-  let mut i: usize = 0;
-  for character in L::iter(pattern) {
+  let mut out_i: usize = 0;
+  for (i, character) in L::iter(pattern).enumerate() {
+    out_i = i;
     let (mut ctx_kind, mut components) = group_context.pop().unwrap();
 
     if previous_was_special_group {
@@ -885,7 +886,6 @@ where
     };
     components.push(new_component);
     group_context.push((ctx_kind, components));
-    i += 1;
   }
   /* END LOOP! */
 
@@ -893,7 +893,7 @@ where
     (ContextKind::Group(_), _) => {
       return Err(ParseError {
         kind: ParseErrorKind::UnmatchedOpenParen,
-        at: i,
+        at: out_i,
       })
     },
     (ContextKind::TopLevel, top_level_components) => {
@@ -906,91 +906,91 @@ where
   if previous_was_special_group {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
   if let Some(_) = currently_within_group_number {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
 
   if previous_was_open_group {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
   if previous_was_open_square_brace {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
 
   if let Some(_) = currently_within_char_alternative {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
 
   if previous_was_final_class_colon {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
   if previous_was_range_hyphen {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
 
   if previous_two_were_backslash_underscore {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
 
   if previous_was_syntax_code {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
   if previous_was_category_code {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
 
   if previous_was_closing_backslash_of_repeat {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
   if let Some(_) = currently_second_repeat_arg {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
   if let Some(_) = currently_first_repeat_arg {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
   if previous_was_backslash {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
-      at: i,
+      at: out_i,
     });
   }
 
@@ -1017,14 +1017,14 @@ where
       None => {
         return Err(ParseError {
           kind: ParseErrorKind::InvalidPostfixPosition,
-          at: i,
+          at: out_i,
         })
       },
       Some(c) => match apply_postfix(c, op, alloc.clone()) {
         None => {
           return Err(ParseError {
             kind: ParseErrorKind::PostfixAfterAlternator,
-            at: i,
+            at: out_i,
           })
         },
         Some(expr) => expr,
@@ -1145,10 +1145,39 @@ mod test {
     assert_eq!(&format!("{}", parsed), "a\\{2\\}");
   }
 
+  #[test]
+  fn parse_char_alt() {
+    let parsed = parse::<UnicodeEncoding, _>("a[a]", Global).unwrap();
+    /* assert_eq!(parsed, Expr::Postfix { */
+    /* inner: Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))), */
+    /* op: PostfixOp::Repeat(RepeatOperator::Exact(ExactRepeatOperator { */
+    /* times: RepeatNumeral(2) */
+    /* })), */
+    /* }); */
+    assert_eq!(&format!("{}", parsed), "a[a]");
+  }
+
+  prop_compose! {
+    fn gen_expr()
+      (
+        e in prop::arbitrary::arbitrary_with::<
+          Expr<UnicodeEncoding, Global>,
+          _,
+          _
+        >((((), 5, Global), 5, 5, 5, 5, 5))
+      ) -> Expr<UnicodeEncoding, Global> {
+        e
+      }
+  }
+
   proptest! {
     #[test]
-    fn ooo(s in "a+") {
-      prop_assert!(!s.is_empty());
+    fn parse_roundtrip(e in gen_expr()) {
+      let formatted = format!("{}", e);
+      let parsed = parse::<UnicodeEncoding, Global>(&formatted, Global);
+      prop_assert!(parsed.is_ok());
+      let parsed = parsed.unwrap();
+      prop_assert_eq!(e, parsed);
     }
   }
 }
