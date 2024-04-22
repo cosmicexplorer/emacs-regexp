@@ -28,15 +28,31 @@ pub enum Negation {
 /// See <https://www.gnu.org/software/emacs/manual/html_node/elisp/Non_002dASCII-Characters.html>.
 pub mod literals {
   pub mod single {
+    use core::fmt;
+
     #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
     #[repr(transparent)]
     pub struct SingleLiteral<LSi>(pub LSi);
 
+    impl<LSi> fmt::Display for SingleLiteral<LSi>
+    where LSi: fmt::Display
+    {
+      fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
+    }
+
     pub mod escapes {
+      use core::fmt;
+
       use super::SingleLiteral;
 
       #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
       pub struct Escaped<LSi>(pub SingleLiteral<LSi>);
+
+      impl<LSi> fmt::Display for Escaped<LSi>
+      where LSi: fmt::Display
+      {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "\\{}", self.0) }
+      }
     }
   }
 }
@@ -86,6 +102,30 @@ pub mod character_alternatives {
     Punctuation, /* syntax table! */
   }
 
+  impl fmt::Display for CharacterClass {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::ASCII => write!(f, "[:ascii:]"),
+        Self::NonASCII => write!(f, "[:nonascii:]"),
+        Self::AlNum => write!(f, "[:alnum:]"),
+        Self::Alpha => write!(f, "[:alpha:]"),
+        Self::Blank => write!(f, "[:blank:]"),
+        Self::Whitespace => write!(f, "[:space:]"),
+        Self::Control => write!(f, "[:cntrl:]"),
+        Self::Digit => write!(f, "[:digit:]"),
+        Self::HexDigit => write!(f, "[:xdigit:]"),
+        Self::Printing => write!(f, "[:print:]"),
+        Self::Graphic => write!(f, "[:graph:]"),
+        Self::LowerCase => write!(f, "[:lower:]"),
+        Self::UpperCase => write!(f, "[:upper:]"),
+        Self::Unibyte => write!(f, "[:unibyte:]"),
+        Self::Multibyte => write!(f, "[:multibyte:]"),
+        Self::Word => write!(f, "[:word:]"),
+        Self::Punctuation => write!(f, "[:punct:]"),
+      }
+    }
+  }
+
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub enum CharAltComponent<LSi> {
     /// `a`
@@ -97,6 +137,18 @@ pub mod character_alternatives {
     },
     /// `[:ascii:]`
     Class(CharacterClass),
+  }
+
+  impl<LSi> fmt::Display for CharAltComponent<LSi>
+  where LSi: fmt::Display
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::SingleLiteral(sl) => write!(f, "{}", sl),
+        Self::LiteralRange { left, right } => write!(f, "{}-{}", left, right),
+        Self::Class(cc) => write!(f, "{}", cc),
+      }
+    }
   }
 
   #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -131,6 +183,24 @@ pub mod character_alternatives {
     }
   }
 
+  impl<LSi, A> fmt::Display for CharacterAlternative<LSi, A>
+  where
+    LSi: fmt::Display,
+    A: Allocator,
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      write!(f, "[")?;
+      match self.complemented {
+        ComplementBehavior::Complemented => write!(f, "^")?,
+        _ => (),
+      }
+      for el in self.elements.iter() {
+        write!(f, "{}", el)?;
+      }
+      write!(f, "]")
+    }
+  }
+
   impl<LSi, A> PartialEq for CharacterAlternative<LSi, A>
   where
     LSi: PartialEq,
@@ -155,6 +225,8 @@ pub mod character_alternatives {
 }
 
 pub mod postfix_operators {
+  use core::fmt;
+
   #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub enum GreedyBehavior {
     #[default]
@@ -169,20 +241,49 @@ pub mod postfix_operators {
     Question,
   }
 
+  impl fmt::Display for SimpleOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::Star => write!(f, "*"),
+        Self::Plus => write!(f, "+"),
+        Self::Question => write!(f, "?"),
+      }
+    }
+  }
+
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub struct MaybeGreedyOperator {
     pub op: SimpleOperator,
     pub greediness: GreedyBehavior,
   }
 
+  impl fmt::Display for MaybeGreedyOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      write!(f, "{}", &self.op)?;
+      match self.greediness {
+        GreedyBehavior::NonGreedy => write!(f, "?")?,
+        _ => (),
+      }
+      Ok(())
+    }
+  }
+
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
   pub struct RepeatNumeral(pub usize);
+
+  impl fmt::Display for RepeatNumeral {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
+  }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
   pub struct ExactRepeatOperator {
     pub times: RepeatNumeral,
+  }
+
+  impl fmt::Display for ExactRepeatOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "\\{{{}\\}}", self.times) }
   }
 
   /// {0,1} or {,1} => ?
@@ -194,10 +295,31 @@ pub mod postfix_operators {
     pub right: Option<RepeatNumeral>,
   }
 
+  impl fmt::Display for GeneralRepeatOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      let Self { left, right } = self;
+      match (left, right) {
+        (None, None) => write!(f, "\\{{,\\}}"),
+        (Some(_), None) => unreachable!(),
+        (None, Some(right)) => write!(f, "\\{{,{}\\}}", right),
+        (Some(left), Some(right)) => write!(f, "\\{{{},{}\\}}", left, right),
+      }
+    }
+  }
+
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub enum RepeatOperator {
     Exact(ExactRepeatOperator),
     General(GeneralRepeatOperator),
+  }
+
+  impl fmt::Display for RepeatOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::Exact(ero) => write!(f, "{}", ero),
+        Self::General(gro) => write!(f, "{}", gro),
+      }
+    }
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -205,9 +327,20 @@ pub mod postfix_operators {
     Simple(MaybeGreedyOperator),
     Repeat(RepeatOperator),
   }
+
+  impl fmt::Display for PostfixOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::Simple(mgo) => write!(f, "{}", mgo),
+        Self::Repeat(ro) => write!(f, "{}", ro),
+      }
+    }
+  }
 }
 
 pub mod anchors {
+  use core::fmt;
+
   use super::Negation;
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -222,6 +355,17 @@ pub mod anchors {
     Symbol,
   }
 
+  impl fmt::Display for StartAnchor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::Carat => write!(f, "^"),
+        Self::Backtick => write!(f, "\\`"),
+        Self::Word => write!(f, "\\<"),
+        Self::Symbol => write!(f, "\\_<"),
+      }
+    }
+  }
+
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub enum EndAnchor {
     /// $
@@ -234,15 +378,39 @@ pub mod anchors {
     Symbol,
   }
 
+  impl fmt::Display for EndAnchor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::Dollar => write!(f, "$"),
+        Self::SingleQuote => write!(f, "\\'"),
+        Self::Word => write!(f, "\\>"),
+        Self::Symbol => write!(f, "\\_>"),
+      }
+    }
+  }
+
   /// \=
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub struct PointAnchor;
+
+  impl fmt::Display for PointAnchor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "\\=") }
+  }
 
   /// \b or \B (negated)
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
   pub struct WordAnchor {
     pub negation: Negation,
+  }
+
+  impl fmt::Display for WordAnchor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self.negation {
+        Negation::Standard => write!(f, "\\b"),
+        Negation::Negated => write!(f, "\\B"),
+      }
+    }
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -252,14 +420,29 @@ pub mod anchors {
     Point(PointAnchor),
     Word(WordAnchor),
   }
+
+  impl fmt::Display for Anchor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::Start(sa) => write!(f, "{}", sa),
+        Self::End(ea) => write!(f, "{}", ea),
+        Self::Point(pa) => write!(f, "{}", pa),
+        Self::Word(wa) => write!(f, "{}", wa),
+      }
+    }
+  }
 }
 
 pub mod groups {
-  use core::num::NonZeroUsize;
+  use core::{fmt, num::NonZeroUsize};
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
   pub struct ExplicitGroupIndex(pub NonZeroUsize);
+
+  impl fmt::Display for ExplicitGroupIndex {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
+  }
 
   #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub enum GroupKind {
@@ -277,13 +460,23 @@ pub mod groups {
   #[repr(transparent)]
   pub struct BackrefIndex(pub u8);
 
+  impl fmt::Display for BackrefIndex {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
+  }
+
   /// `\1 -> \9`
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
   pub struct Backref(pub BackrefIndex);
+
+  impl fmt::Display for Backref {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "\\{}", self.0) }
+  }
 }
 
 pub mod char_properties {
+  use core::fmt;
+
   use super::Negation;
 
   /// `\w` or `\W` *(negated)*
@@ -293,9 +486,22 @@ pub mod char_properties {
     pub negation: Negation,
   }
 
+  impl fmt::Display for WordChar {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self.negation {
+        Negation::Standard => write!(f, "\\w"),
+        Negation::Negated => write!(f, "\\W"),
+      }
+    }
+  }
+
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
   pub struct SyntaxCode(pub u8);
+
+  impl fmt::Display for SyntaxCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
+  }
 
   /// `\s<code>` or `\S<code>` *(negated)*
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -304,9 +510,22 @@ pub mod char_properties {
     pub negation: Negation,
   }
 
+  impl fmt::Display for SyntaxChar {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self.negation {
+        Negation::Standard => write!(f, "\\s{}", self.code),
+        Negation::Negated => write!(f, "\\S{}", self.code),
+      }
+    }
+  }
+
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
   pub struct CategoryCode(pub u8);
+
+  impl fmt::Display for CategoryCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
+  }
 
   /// `\c<code>` or `\C<code>` *(negated)*
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -315,11 +534,31 @@ pub mod char_properties {
     pub negation: Negation,
   }
 
+  impl fmt::Display for CategoryChar {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self.negation {
+        Negation::Standard => write!(f, "\\c{}", self.code),
+        Negation::Negated => write!(f, "\\C{}", self.code),
+      }
+    }
+  }
+
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   pub enum CharPropertiesSelector {
     Word(WordChar),
     Syntax(SyntaxChar),
     Category(CategoryChar),
+  }
+
+
+  impl fmt::Display for CharPropertiesSelector {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::Word(wc) => write!(f, "{}", wc),
+        Self::Syntax(sc) => write!(f, "{}", sc),
+        Self::Category(cc) => write!(f, "{}", cc),
+      }
+    }
   }
 }
 
@@ -361,6 +600,21 @@ pub mod expr {
         Self::Alt(ca) => write!(f, "SingleCharSelector::Alt({:?})", ca),
         Self::Esc(esc) => write!(f, "SingleCharSelector::Esc({:?})", esc),
         Self::Dot => write!(f, "SingleCharSelector::Dot"),
+      }
+    }
+  }
+
+  impl<LSi, A> fmt::Display for SingleCharSelector<LSi, A>
+  where
+    LSi: fmt::Display,
+    A: Allocator,
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::Prop(cps) => write!(f, "{}", cps),
+        Self::Alt(ca) => write!(f, "{}", ca),
+        Self::Esc(esc) => write!(f, "{}", esc),
+        Self::Dot => write!(f, "."),
       }
     }
   }
@@ -481,6 +735,47 @@ pub mod expr {
     }
   }
 
+  impl<L, A> fmt::Display for Expr<L, A>
+  where
+    L: LiteralEncoding,
+    L::Single: fmt::Display,
+    A: Allocator,
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::SingleLiteral(sl) => write!(f, "{}", sl),
+        Self::EscapedLiteral(el) => write!(f, "{}", el),
+        Self::Backref(br) => write!(f, "{}", br),
+        Self::Anchor(a) => write!(f, "{}", a),
+        Self::CharSelector(scs) => write!(f, "{}", scs),
+        Self::Postfix { inner, op } => write!(f, "{}{}", inner.as_ref(), op),
+        Self::Group { kind, inner } => {
+          match kind {
+            GroupKind::Basic => write!(f, "\\(")?,
+            GroupKind::Shy => write!(f, "\\(?:")?,
+            GroupKind::ExplicitlyNumbered(egi) => write!(f, "\\(?{}:", egi)?,
+          }
+          write!(f, "{}", inner.as_ref())?;
+          write!(f, "\\)")
+        },
+        Self::Alternation { cases } => {
+          let (first, rest) = cases.split_first().expect("should have >0 cases!");
+          write!(f, "{}", first)?;
+          for c in rest.iter() {
+            write!(f, "\\|{}", c)?;
+          }
+          Ok(())
+        },
+        Self::Concatenation { components } => {
+          for c in components.iter() {
+            write!(f, "{}", c)?;
+          }
+          Ok(())
+        },
+      }
+    }
+  }
+
   impl<L, A> PartialEq for Expr<L, A>
   where
     L: LiteralEncoding,
@@ -537,5 +832,56 @@ pub mod expr {
     L: LiteralEncoding,
     A: Allocator,
   {
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::alloc::Global;
+
+  use super::{expr::*, groups::*, literals::single::*, postfix_operators::*};
+  use crate::encoding::ByteEncoding;
+
+  #[test]
+  fn expr_display() {
+    let e = Expr::Concatenation {
+      components: vec![
+        Box::new(Expr::<ByteEncoding, _>::SingleLiteral(SingleLiteral(b'a'))),
+        Box::new(Expr::Postfix {
+          inner: Box::new(Expr::Group {
+            kind: GroupKind::Basic,
+            inner: Box::new(Expr::Alternation {
+              cases: vec![
+                Box::new(Expr::Concatenation {
+                  components: vec![
+                    Box::new(Expr::SingleLiteral(SingleLiteral(b's'))),
+                    Box::new(Expr::SingleLiteral(SingleLiteral(b'd'))),
+                  ],
+                }),
+                Box::new(Expr::Concatenation {
+                  components: vec![
+                    Box::new(Expr::Postfix {
+                      inner: Box::new(Expr::CharSelector(SingleCharSelector::Dot)),
+                      op: PostfixOp::Simple(MaybeGreedyOperator {
+                        op: SimpleOperator::Question,
+                        greediness: GreedyBehavior::Greedy,
+                      }),
+                    }),
+                    Box::new(Expr::SingleLiteral(SingleLiteral(b'e'))),
+                  ],
+                }),
+              ],
+            }),
+          }),
+          op: PostfixOp::Simple(MaybeGreedyOperator {
+            op: SimpleOperator::Plus,
+            greediness: GreedyBehavior::NonGreedy,
+          }),
+        }),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'f'))),
+      ],
+    };
+    let formatted = format!("{}", e);
+    assert_eq!(&formatted, "a\\(sd\\|.?e\\)+?f");
   }
 }
