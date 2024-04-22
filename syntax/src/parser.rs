@@ -200,6 +200,8 @@ pub enum ParseErrorKind {
   UnmatchedOpenParen,
   /// internal logic error
   InternalLogicError,
+  /// invalid state at end of pattern
+  InvalidEndState,
 }
 
 /// parse error kind = {kind}, at = {at}
@@ -878,8 +880,9 @@ where A: Allocator+Clone {
     components.push(new_component);
     group_context.push((ctx_kind, components));
   }
+  /* END LOOP! */
 
-  let top_level_expr = match group_context.pop().unwrap() {
+  let mut top_level_components = match group_context.pop().unwrap() {
     (ContextKind::Group(_), _) => {
       return Err(ParseError {
         kind: ParseErrorKind::UnmatchedOpenParen,
@@ -888,9 +891,143 @@ where A: Allocator+Clone {
     },
     (ContextKind::TopLevel, top_level_components) => {
       assert!(group_context.is_empty());
-      coalesce_components(top_level_components, alloc)
+      top_level_components
     },
   };
+
+  /* Address any state remaining at the end! */
+  if previous_was_special_group {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+  if let Some(_) = currently_within_group_number {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+
+  if previous_was_open_group {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+  if previous_was_open_square_brace {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+
+  if let Some(_) = currently_within_char_alternative {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+
+  if previous_was_final_class_colon {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+  if previous_was_range_hyphen {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+
+  if previous_two_were_backslash_underscore {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+
+  if previous_was_syntax_code {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+  if previous_was_category_code {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+
+  if previous_was_closing_backslash_of_repeat {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+  if let Some(_) = currently_second_repeat_arg {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+  if let Some(_) = currently_first_repeat_arg {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+  if previous_was_backslash {
+    return Err(ParseError {
+      kind: ParseErrorKind::InvalidEndState,
+      at: pattern.len(),
+    });
+  }
+
+  if previous_was_star {
+    previously_had_postfix = Some(PostfixOp::Simple(MaybeGreedyOperator {
+      op: SimpleOperator::Star,
+      greediness: GreedyBehavior::Greedy,
+    }));
+  }
+  if previous_was_plus {
+    previously_had_postfix = Some(PostfixOp::Simple(MaybeGreedyOperator {
+      op: SimpleOperator::Plus,
+      greediness: GreedyBehavior::Greedy,
+    }));
+  }
+  if previous_was_question {
+    previously_had_postfix = Some(PostfixOp::Simple(MaybeGreedyOperator {
+      op: SimpleOperator::Question,
+      greediness: GreedyBehavior::Greedy,
+    }));
+  }
+  if let Some(op) = previously_had_postfix {
+    let postfixed_expr = match top_level_components.pop() {
+      None => {
+        return Err(ParseError {
+          kind: ParseErrorKind::InvalidPostfixPosition,
+          at: pattern.len(),
+        })
+      },
+      Some(c) => match apply_postfix(c, op, alloc.clone()) {
+        None => {
+          return Err(ParseError {
+            kind: ParseErrorKind::PostfixAfterAlternator,
+            at: pattern.len(),
+          })
+        },
+        Some(expr) => expr,
+      },
+    };
+    top_level_components.push(postfixed_expr);
+  }
+
+
+  let top_level_expr = coalesce_components(top_level_components, alloc);
 
   Ok(top_level_expr)
 }
@@ -933,6 +1070,22 @@ mod test {
           }),
         }),
         Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+      ]
+    });
+
+    let parsed = parse_bytes(b"asdf+", Global).unwrap();
+    assert_eq!(parsed, Expr::<ByteEncoding, Global>::Concatenation {
+      components: vec![
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b's'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'd'))),
+        Box::new(Expr::Postfix {
+          inner: Box::new(Expr::SingleLiteral(SingleLiteral(b'f'))),
+          op: PostfixOp::Simple(MaybeGreedyOperator {
+            greediness: GreedyBehavior::Greedy,
+            op: SimpleOperator::Plus,
+          }),
+        }),
       ]
     });
   }
