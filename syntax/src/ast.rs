@@ -966,7 +966,11 @@ pub mod expr {
           Ok(())
         },
         Self::Concatenation { components } => {
+          #[cfg(test)]
+          eprintln!("l={}", components.len());
           for c in components.iter() {
+            #[cfg(test)]
+            eprintln!("c={}", c);
             write!(f, "{}", c)?;
           }
           Ok(())
@@ -1008,7 +1012,8 @@ pub mod expr {
           },
         ) => kind_a == kind_b && inner_a.eq(inner_b),
         (Self::Alternation { cases: cases_a }, Self::Alternation { cases: cases_b }) => {
-          cases_a.iter().zip(cases_b.iter()).all(|(a, b)| a.eq(b))
+          (cases_a.len() == cases_b.len())
+            && cases_a.iter().zip(cases_b.iter()).all(|(a, b)| a.eq(b))
         },
         (
           Self::Concatenation {
@@ -1017,10 +1022,13 @@ pub mod expr {
           Self::Concatenation {
             components: components_b,
           },
-        ) => components_a
-          .iter()
-          .zip(components_b.iter())
-          .all(|(a, b)| a.eq(b)),
+        ) => {
+          (components_a.len() == components_b.len())
+            && components_a
+              .iter()
+              .zip(components_b.iter())
+              .all(|(a, b)| a.eq(b))
+        },
         _ => false,
       }
     }
@@ -1078,7 +1086,24 @@ mod test {
         Box::new(Expr::SingleLiteral(SingleLiteral(b'f'))),
       ],
     };
-    let formatted = format!("{}", e);
-    assert_eq!(&formatted, "a\\(sd\\|.?e\\)+?f");
+    assert_eq!(&format!("{}", e), "a\\(sd\\|.?e\\)+?f");
+
+    let e = Expr::<ByteEncoding, _>::Concatenation {
+      components: vec![
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b's'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'd'))),
+        Box::new(Expr::Postfix {
+          inner: Box::new(Expr::SingleLiteral(SingleLiteral(b'f'))),
+          op: PostfixOp::Simple(MaybeGreedyOperator {
+            greediness: GreedyBehavior::Greedy,
+            op: SimpleOperator::Plus,
+          }),
+        }),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+      ],
+    };
+    assert_eq!(&format!("{}", e), "asdf+aa");
   }
 }

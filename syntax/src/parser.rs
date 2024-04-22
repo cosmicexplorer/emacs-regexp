@@ -1088,5 +1088,24 @@ mod test {
         }),
       ]
     });
+
+    let parsed = parse_bytes(b"asdf+aa", Global).unwrap();
+    assert_eq!(parsed, Expr::<ByteEncoding, Global>::Concatenation {
+      components: vec![
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b's'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'd'))),
+        Box::new(Expr::Postfix {
+          inner: Box::new(Expr::SingleLiteral(SingleLiteral(b'f'))),
+          op: PostfixOp::Simple(MaybeGreedyOperator {
+            greediness: GreedyBehavior::Greedy,
+            op: SimpleOperator::Plus,
+          }),
+        }),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+      ]
+    });
+    assert_eq!(&format!("{}", parsed), "asdf+aa");
   }
 }
