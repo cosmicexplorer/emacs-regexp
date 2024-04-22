@@ -63,11 +63,11 @@ enum ContextKind {
 enum ContextComponent<A>
 where A: Allocator
 {
-  SingleLiteral(SingleLiteral<u8>),
-  EscapedLiteral(Escaped<u8>),
+  SingleLiteral(SingleLiteral<ByteEncoding>),
+  EscapedLiteral(Escaped<ByteEncoding>),
   Backref(Backref),
   Anchor(Anchor),
-  CharSelector(SingleCharSelector<u8, A>),
+  CharSelector(SingleCharSelector<ByteEncoding, A>),
   Postfix {
     expr: Expr<ByteEncoding, A>,
     op: PostfixOp,
@@ -223,7 +223,7 @@ where A: Allocator+Clone {
   let mut previous_code_negation: Option<Negation> = None;
 
   let mut previous_was_open_square_brace: bool = false;
-  let mut currently_within_char_alternative: Option<CharacterAlternative<u8, A>> = None;
+  let mut currently_within_char_alternative: Option<CharacterAlternative<ByteEncoding, A>> = None;
   let mut previous_was_range_hyphen: bool = false;
   let mut currently_within_char_class: Option<Vec<u8, A>> = None;
   let mut previous_was_final_class_colon: bool = false;

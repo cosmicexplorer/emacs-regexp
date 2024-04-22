@@ -49,25 +49,37 @@ pub mod ast;
 pub mod parser;
 
 pub mod encoding {
-  use core::hash::Hash;
+  use core::{fmt, hash::Hash};
 
   pub trait LiteralRequirements = Eq+Ord+Clone+Hash;
 
   pub trait LiteralEncoding {
     type Single: LiteralRequirements+Copy;
     type String<'n>: LiteralRequirements+Copy;
+
+    fn fmt(s: &Self::Single, f: &mut fmt::Formatter) -> fmt::Result;
   }
 
   pub struct ByteEncoding;
   impl LiteralEncoding for ByteEncoding {
     type Single = u8;
     type String<'n> = &'n [u8];
+
+    fn fmt(s: &u8, f: &mut fmt::Formatter) -> fmt::Result {
+      if !(s.is_ascii_alphanumeric() || s.is_ascii_punctuation() || s.is_ascii_whitespace()) {
+        todo!("figure out how to print non-printable chars: {}", s);
+      }
+      let s = char::from_u32(*s as u32).unwrap();
+      write!(f, "{}", s)
+    }
   }
 
   pub struct UnicodeEncoding;
   impl LiteralEncoding for UnicodeEncoding {
     type Single = char;
     type String<'n> = &'n str;
+
+    fn fmt(s: &char, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", s) }
   }
 
   pub struct MultibyteEncoding;
@@ -77,6 +89,10 @@ pub mod encoding {
     /// However, this is stored in a compressed representation, which may use a
     /// varying number of bits.
     type String<'n> = &'n [u8];
+
+    fn fmt(s: &u32, _f: &mut fmt::Formatter) -> fmt::Result {
+      todo!("multibyte not yet supported: {}", s)
+    }
   }
 }
 

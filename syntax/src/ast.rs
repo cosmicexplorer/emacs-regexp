@@ -28,28 +28,117 @@ pub enum Negation {
 /// See <https://www.gnu.org/software/emacs/manual/html_node/elisp/Non_002dASCII-Characters.html>.
 pub mod literals {
   pub mod single {
-    use core::fmt;
+    use core::{cmp, fmt, hash};
 
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    use crate::encoding::LiteralEncoding;
+
+    #[derive(Copy)]
     #[repr(transparent)]
-    pub struct SingleLiteral<LSi>(pub LSi);
+    pub struct SingleLiteral<L>(pub L::Single)
+    where L: LiteralEncoding;
 
-    impl<LSi> fmt::Display for SingleLiteral<LSi>
-    where LSi: fmt::Display
+    impl<L> Clone for SingleLiteral<L>
+    where L: LiteralEncoding
     {
-      fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
+      fn clone(&self) -> Self { Self(self.0.clone()) }
+    }
+
+    impl<L> PartialEq for SingleLiteral<L>
+    where L: LiteralEncoding
+    {
+      fn eq(&self, other: &Self) -> bool { self.0.eq(&other.0) }
+    }
+
+    impl<L> Eq for SingleLiteral<L> where L: LiteralEncoding {}
+
+    impl<L> cmp::PartialOrd for SingleLiteral<L>
+    where L: LiteralEncoding
+    {
+      fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> { self.0.partial_cmp(&other.0) }
+    }
+
+    impl<L> cmp::Ord for SingleLiteral<L>
+    where L: LiteralEncoding
+    {
+      fn cmp(&self, other: &Self) -> cmp::Ordering { self.0.cmp(&other.0) }
+    }
+
+    impl<L> hash::Hash for SingleLiteral<L>
+    where L: LiteralEncoding
+    {
+      fn hash<H: hash::Hasher>(&self, state: &mut H) { self.0.hash(state); }
+    }
+
+    impl<L> fmt::Debug for SingleLiteral<L>
+    where
+      L: LiteralEncoding,
+      L::Single: fmt::Debug,
+    {
+      fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SingleLiteral({:?})", self.0)
+      }
+    }
+
+    impl<L> fmt::Display for SingleLiteral<L>
+    where L: LiteralEncoding
+    {
+      fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { L::fmt(&self.0, f) }
     }
 
     pub mod escapes {
-      use core::fmt;
+      use core::{cmp, fmt, hash};
 
-      use super::SingleLiteral;
+      use super::{LiteralEncoding, SingleLiteral};
 
-      #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-      pub struct Escaped<LSi>(pub SingleLiteral<LSi>);
+      #[derive(Copy)]
+      pub struct Escaped<L>(pub SingleLiteral<L>)
+      where L: LiteralEncoding;
 
-      impl<LSi> fmt::Display for Escaped<LSi>
-      where LSi: fmt::Display
+      impl<L> Clone for Escaped<L>
+      where L: LiteralEncoding
+      {
+        fn clone(&self) -> Self { Self(self.0.clone()) }
+      }
+
+      impl<L> PartialEq for Escaped<L>
+      where L: LiteralEncoding
+      {
+        fn eq(&self, other: &Self) -> bool { self.0.eq(&other.0) }
+      }
+
+      impl<L> Eq for Escaped<L> where L: LiteralEncoding {}
+
+      impl<L> cmp::PartialOrd for Escaped<L>
+      where L: LiteralEncoding
+      {
+        fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+          self.0.partial_cmp(&other.0)
+        }
+      }
+
+      impl<L> cmp::Ord for Escaped<L>
+      where L: LiteralEncoding
+      {
+        fn cmp(&self, other: &Self) -> cmp::Ordering { self.0.cmp(&other.0) }
+      }
+
+      impl<L> hash::Hash for Escaped<L>
+      where L: LiteralEncoding
+      {
+        fn hash<H: hash::Hasher>(&self, state: &mut H) { self.0.hash(state); }
+      }
+
+
+      impl<L> fmt::Debug for Escaped<L>
+      where
+        L: LiteralEncoding,
+        L::Single: fmt::Debug,
+      {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "Escaped({:?})", self.0) }
+      }
+
+      impl<L> fmt::Display for Escaped<L>
+      where L: LiteralEncoding
       {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "\\{}", self.0) }
       }
@@ -58,10 +147,10 @@ pub mod literals {
 }
 
 pub mod character_alternatives {
-  use core::{alloc::Allocator, fmt};
+  use core::{alloc::Allocator, fmt, hash};
 
   use super::literals::single::SingleLiteral;
-  use crate::alloc_types::*;
+  use crate::{alloc_types::*, encoding::LiteralEncoding};
 
   /// See <https://www.gnu.org/software/emacs/manual/html_node/elisp/Char-Classes.html#Char-Classes>.
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -126,21 +215,97 @@ pub mod character_alternatives {
     }
   }
 
-  #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-  pub enum CharAltComponent<LSi> {
+  #[derive(Copy)]
+  pub enum CharAltComponent<L>
+  where L: LiteralEncoding
+  {
     /// `a`
-    SingleLiteral(SingleLiteral<LSi>),
+    SingleLiteral(SingleLiteral<L>),
     /// `a-z`
     LiteralRange {
-      left: SingleLiteral<LSi>,
-      right: SingleLiteral<LSi>,
+      left: SingleLiteral<L>,
+      right: SingleLiteral<L>,
     },
     /// `[:ascii:]`
     Class(CharacterClass),
   }
 
-  impl<LSi> fmt::Display for CharAltComponent<LSi>
-  where LSi: fmt::Display
+  impl<L> Clone for CharAltComponent<L>
+  where L: LiteralEncoding
+  {
+    fn clone(&self) -> Self {
+      match self {
+        Self::SingleLiteral(sl) => Self::SingleLiteral(sl.clone()),
+        Self::LiteralRange { left, right } => Self::LiteralRange {
+          left: left.clone(),
+          right: right.clone(),
+        },
+        Self::Class(cc) => Self::Class(cc.clone()),
+      }
+    }
+  }
+
+  impl<L> PartialEq for CharAltComponent<L>
+  where L: LiteralEncoding
+  {
+    fn eq(&self, other: &Self) -> bool {
+      match (self, other) {
+        (Self::SingleLiteral(sl1), Self::SingleLiteral(sl2)) => sl1.eq(sl2),
+        (
+          Self::LiteralRange {
+            left: l1,
+            right: r1,
+          },
+          Self::LiteralRange {
+            left: l2,
+            right: r2,
+          },
+        ) => l1.eq(l2) && r1.eq(r2),
+        (Self::Class(c1), Self::Class(c2)) => c1.eq(c2),
+        _ => false,
+      }
+    }
+  }
+
+  impl<L> Eq for CharAltComponent<L> where L: LiteralEncoding {}
+
+  impl<L> hash::Hash for CharAltComponent<L>
+  where L: LiteralEncoding
+  {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+      match self {
+        Self::SingleLiteral(sl) => sl.hash(state),
+        Self::LiteralRange { left, right } => {
+          left.hash(state);
+          right.hash(state);
+        },
+        Self::Class(cc) => cc.hash(state),
+      }
+    }
+  }
+
+  impl<L> fmt::Debug for CharAltComponent<L>
+  where
+    L: LiteralEncoding,
+    L::Single: fmt::Debug,
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::SingleLiteral(sl) => write!(f, "CharAltComponent::SingleLiteral({:?})", sl),
+        Self::LiteralRange { left, right } => {
+          write!(
+            f,
+            "CharAltComponent::LiteralRange {{ left: {:?}, right: {:?} }}",
+            left, right
+          )
+        },
+        Self::Class(cc) => write!(f, "CharAltComponent::Class({:?})", cc),
+      }
+    }
+  }
+
+  impl<L> fmt::Display for CharAltComponent<L>
+  where L: LiteralEncoding
   {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
       match self {
@@ -160,21 +325,40 @@ pub mod character_alternatives {
   }
 
   /// `[a-z0-9]` or `[^a-z]`
-  #[derive(Clone)]
-  pub struct CharacterAlternative<LSi, A>
-  where A: Allocator
+  pub struct CharacterAlternative<L, A>
+  where
+    L: LiteralEncoding,
+    A: Allocator,
   {
     pub complemented: ComplementBehavior,
-    pub elements: Vec<CharAltComponent<LSi>, A>,
+    pub elements: Vec<CharAltComponent<L>, A>,
   }
 
-  impl<LSi, A> fmt::Debug for CharacterAlternative<LSi, A>
+  impl<L, A> Clone for CharacterAlternative<L, A>
   where
-    LSi: fmt::Debug,
+    L: LiteralEncoding,
+    A: Allocator+Clone,
+  {
+    fn clone(&self) -> Self {
+      let Self {
+        complemented,
+        elements,
+      } = self;
+      Self {
+        complemented: complemented.clone(),
+        elements: elements.clone(),
+      }
+    }
+  }
+
+  impl<L, A> fmt::Debug for CharacterAlternative<L, A>
+  where
+    L: LiteralEncoding,
+    L::Single: fmt::Debug,
     A: Allocator,
   {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-      let elements: &[CharAltComponent<LSi>] = self.elements.as_ref();
+      let elements: &[CharAltComponent<L>] = self.elements.as_ref();
       write!(
         f,
         "CharacterAlternative {{ complemented: {:?}, elements: {:?} }}",
@@ -183,9 +367,9 @@ pub mod character_alternatives {
     }
   }
 
-  impl<LSi, A> fmt::Display for CharacterAlternative<LSi, A>
+  impl<L, A> fmt::Display for CharacterAlternative<L, A>
   where
-    LSi: fmt::Display,
+    L: LiteralEncoding,
     A: Allocator,
   {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -201,9 +385,9 @@ pub mod character_alternatives {
     }
   }
 
-  impl<LSi, A> PartialEq for CharacterAlternative<LSi, A>
+  impl<L, A> PartialEq for CharacterAlternative<L, A>
   where
-    LSi: PartialEq,
+    L: LiteralEncoding,
     A: Allocator,
   {
     fn eq(&self, other: &Self) -> bool {
@@ -216,9 +400,9 @@ pub mod character_alternatives {
     }
   }
 
-  impl<LSi, A> Eq for CharacterAlternative<LSi, A>
+  impl<L, A> Eq for CharacterAlternative<L, A>
   where
-    LSi: Eq,
+    L: LiteralEncoding,
     A: Allocator,
   {
   }
@@ -576,22 +760,39 @@ pub mod expr {
   };
   use crate::{alloc_types::*, encoding::LiteralEncoding};
 
-  #[derive(Clone)]
-  pub enum SingleCharSelector<LSi, A>
-  where A: Allocator
+  pub enum SingleCharSelector<L, A>
+  where
+    L: LiteralEncoding,
+    A: Allocator,
   {
     Prop(CharPropertiesSelector),
-    Alt(CharacterAlternative<LSi, A>),
-    Esc(Escaped<LSi>),
+    Alt(CharacterAlternative<L, A>),
+    Esc(Escaped<L>),
     /// `.`
     ///
     /// Any char except newline.
     Dot,
   }
 
-  impl<LSi, A> fmt::Debug for SingleCharSelector<LSi, A>
+  impl<L, A> Clone for SingleCharSelector<L, A>
   where
-    LSi: fmt::Debug,
+    L: LiteralEncoding,
+    A: Allocator+Clone,
+  {
+    fn clone(&self) -> Self {
+      match self {
+        Self::Prop(cps) => Self::Prop(cps.clone()),
+        Self::Alt(ca) => Self::Alt(ca.clone()),
+        Self::Esc(esc) => Self::Esc(esc.clone()),
+        Self::Dot => Self::Dot,
+      }
+    }
+  }
+
+  impl<L, A> fmt::Debug for SingleCharSelector<L, A>
+  where
+    L: LiteralEncoding,
+    L::Single: fmt::Debug,
     A: Allocator,
   {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -604,9 +805,9 @@ pub mod expr {
     }
   }
 
-  impl<LSi, A> fmt::Display for SingleCharSelector<LSi, A>
+  impl<L, A> fmt::Display for SingleCharSelector<L, A>
   where
-    LSi: fmt::Display,
+    L: LiteralEncoding,
     A: Allocator,
   {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -619,9 +820,9 @@ pub mod expr {
     }
   }
 
-  impl<LSi, A> PartialEq for SingleCharSelector<LSi, A>
+  impl<L, A> PartialEq for SingleCharSelector<L, A>
   where
-    LSi: PartialEq,
+    L: LiteralEncoding,
     A: Allocator,
   {
     fn eq(&self, other: &Self) -> bool {
@@ -635,9 +836,9 @@ pub mod expr {
     }
   }
 
-  impl<LSi, A> Eq for SingleCharSelector<LSi, A>
+  impl<L, A> Eq for SingleCharSelector<L, A>
   where
-    LSi: Eq,
+    L: LiteralEncoding,
     A: Allocator,
   {
   }
@@ -648,15 +849,15 @@ pub mod expr {
     A: Allocator,
   {
     /// `a`
-    SingleLiteral(SingleLiteral<L::Single>),
+    SingleLiteral(SingleLiteral<L>),
     /// `\\` or `\+`
-    EscapedLiteral(Escaped<L::Single>),
+    EscapedLiteral(Escaped<L>),
     /// `\<1-9>`
     Backref(Backref),
     /// `^` or `$`
     Anchor(Anchor),
     /// `[a-z]` or `\w` or `\s-`
-    CharSelector(SingleCharSelector<L::Single, A>),
+    CharSelector(SingleCharSelector<L, A>),
     /// `<expr><op>`
     Postfix {
       inner: Box<Expr<L, A>, A>,
@@ -678,7 +879,6 @@ pub mod expr {
   impl<L, A> Clone for Expr<L, A>
   where
     L: LiteralEncoding,
-    L::Single: Clone,
     A: Allocator+Clone,
   {
     fn clone(&self) -> Self {
@@ -738,7 +938,6 @@ pub mod expr {
   impl<L, A> fmt::Display for Expr<L, A>
   where
     L: LiteralEncoding,
-    L::Single: fmt::Display,
     A: Allocator,
   {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -837,8 +1036,6 @@ pub mod expr {
 
 #[cfg(test)]
 mod test {
-  use std::alloc::Global;
-
   use super::{expr::*, groups::*, literals::single::*, postfix_operators::*};
   use crate::encoding::ByteEncoding;
 
