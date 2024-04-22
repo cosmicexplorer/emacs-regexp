@@ -140,12 +140,14 @@ fn abort_after_writing(mut s: &[u8]) -> ! {
   }
 }
 
+#[cfg_attr(test, allow(dead_code))]
 pub fn do_panic(info: &PanicInfo) -> ! {
   let mut w = crate::util::Writer::<LibcAllocator>::with_initial_capacity(4096);
 
-  if let Some(loc) = info.location() {
-    let mut f = fmt::Formatter::new(&mut w);
-    let _ = fmt::Display::fmt(loc, &mut f);
+  if let Some(loc) = info.location()
+    && let Ok(loc) = crate::util::Writer::<LibcAllocator>::display(loc)
+  {
+    let _ = w.write_str(&loc);
     let _ = w.write_str(": ");
   } else {
     let _ = w.write_str("<location unknown>: ");

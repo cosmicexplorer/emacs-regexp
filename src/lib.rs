@@ -23,13 +23,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 /* Ensure any doctest warnings fails the doctest! */
 #![doc(test(attr(deny(warnings))))]
 #![feature(allocator_api)]
+#![feature(layout_for_ptr)]
 #![feature(error_in_core)]
+#![feature(slice_ptr_get)]
+#![feature(fmt_internals)]
 #![feature(new_uninit)]
 #![feature(maybe_uninit_write_slice)]
+#![allow(internal_features)]
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
-#[cfg(not(test))]
 extern crate alloc;
 
 use core::{alloc::Allocator, fmt, mem::MaybeUninit, str};
@@ -92,16 +95,17 @@ where
 
 impl<AData, AExpr> fmt::Debug for Matcher<AData, AExpr>
 where
-  AData: Allocator,
+  AData: Allocator+Clone,
   AExpr: Allocator,
 {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let Self { data, expr } = self;
+    let expr_display = crate::util::Writer::display_in(expr, Box::allocator(data).clone())?;
     let data = str::from_utf8(&data).expect("TODO: non-utf8 patterns!");
     write!(
       f,
-      "Matcher {{ data: {:?}, expr(\"{}\"): {:?} }}",
-      data, expr, expr
+      "Matcher {{ data: {:?}, expr({:?}): {:?} }}",
+      data, expr_display, expr
     )
   }
 }
@@ -160,6 +164,141 @@ pub struct Input<'h> {
 impl<'h> Input<'h> {
   #[inline(always)]
   pub const fn new(data: &'h [u8]) -> Self { Self { data } }
+}
+
+pub mod util {
+  use core::{alloc::Allocator, fmt, str};
+
+  use crate::alloc_types::*;
+
+  pub mod boxing {
+    use core::{alloc::Layout, ffi::c_char, mem, ptr::NonNull};
+
+    use super::Allocator;
+    use crate::alloc_types::*;
+
+    #[inline(always)]
+    pub unsafe fn box_into_string<A: Allocator>(b: Box<[u8], A>) -> Box<str, A> {
+      let (p, alloc): (*mut [u8], A) = Box::into_raw_with_allocator(b);
+      let p = p as *mut str;
+      unsafe { Box::from_raw_in(p, alloc) }
+    }
+
+    #[inline(always)]
+    pub fn string_into_box<A: Allocator>(b: Box<str, A>) -> Box<[u8], A> {
+      let (p, alloc): (*mut str, A) = Box::into_raw_with_allocator(b);
+      let p = p as *mut [u8];
+      unsafe { Box::from_raw_in(p, alloc) }
+    }
+
+    #[inline(always)]
+    pub fn reallocate_with_trailing_null<A: Allocator>(b: Box<str, A>) -> Box<[u8], A> {
+      let s = string_into_box(b);
+      let (p, alloc) = Box::into_raw_with_allocator(s);
+      unsafe {
+        let p: NonNull<[u8]> = NonNull::new_unchecked(p);
+        let p_const: *const [u8] = mem::transmute(p);
+        let old_layout = Layout::for_value_raw(p_const);
+        let new_layout =
+          Layout::from_size_align_unchecked(old_layout.size() + 1, old_layout.align());
+        let p_base: NonNull<u8> = p.as_non_null_ptr();
+        let new_allocation: NonNull<[u8]> = match alloc.grow_zeroed(p_base, old_layout, new_layout)
+        {
+          Ok(p) => p,
+          Err(_) => ::alloc::alloc::handle_alloc_error(new_layout),
+        };
+        Box::from_raw_in(new_allocation.as_ptr(), alloc)
+      }
+    }
+
+    #[inline(always)]
+    pub fn box_c_char<A: Allocator>(b: Box<[u8], A>) -> (NonNull<c_char>, A) {
+      let (p, alloc) = Box::into_raw_with_allocator(b);
+      let p: NonNull<[u8]> = unsafe { NonNull::new_unchecked(p) };
+      let p: NonNull<u8> = p.as_non_null_ptr();
+      (p.cast(), alloc)
+    }
+
+    #[cfg(test)]
+    mod test {
+      use super::*;
+
+      #[test]
+      fn add_null() {
+        let s = "asdf";
+        let b = s.as_bytes().to_vec().into_boxed_slice();
+        let bs = unsafe { box_into_string(b) };
+        assert_eq!(bs.as_ref(), s);
+        let with_null = reallocate_with_trailing_null(bs);
+        assert_eq!(with_null.as_ref(), b"asdf\0");
+      }
+    }
+  }
+
+  /// Mutable writable object that impls [`fmt::Write`].
+  pub struct Writer<A: Allocator> {
+    data: Vec<u8, A>,
+  }
+
+  impl<A: Allocator> Writer<A> {
+    pub fn with_initial_capacity_in(len: usize, alloc: A) -> Self {
+      Self {
+        data: Vec::with_capacity_in(len, alloc),
+      }
+    }
+
+    pub fn with_initial_capacity(len: usize) -> Self
+    where A: Default {
+      Self::with_initial_capacity_in(len, A::default())
+    }
+
+    pub fn data(&self) -> &[u8] { &self.data }
+
+    pub fn into_boxed(self) -> Box<[u8], A> {
+      let Self { data } = self;
+      data.into_boxed_slice()
+    }
+
+    pub fn into_string(self) -> Box<str, A> {
+      let b = self.into_boxed();
+      unsafe { boxing::box_into_string(b) }
+    }
+
+    pub fn debug_in(x: impl fmt::Debug, alloc: A) -> Result<Box<str, A>, fmt::Error> {
+      let mut w = Self::with_initial_capacity_in(50, alloc);
+      {
+        let mut f = fmt::Formatter::new(&mut w);
+        x.fmt(&mut f)?;
+      }
+      Ok(w.into_string())
+    }
+
+    pub fn debug(x: impl fmt::Debug) -> Result<Box<str, A>, fmt::Error>
+    where A: Default {
+      Self::debug_in(x, A::default())
+    }
+
+    pub fn display_in(x: impl fmt::Display, alloc: A) -> Result<Box<str, A>, fmt::Error> {
+      let mut w = Self::with_initial_capacity_in(50, alloc);
+      {
+        let mut f = fmt::Formatter::new(&mut w);
+        x.fmt(&mut f)?;
+      }
+      Ok(w.into_string())
+    }
+
+    pub fn display(x: impl fmt::Display) -> Result<Box<str, A>, fmt::Error>
+    where A: Default {
+      Self::display_in(x, A::default())
+    }
+  }
+
+  impl<A: Allocator> fmt::Write for Writer<A> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+      self.data.extend_from_slice(s.as_bytes());
+      Ok(())
+    }
+  }
 }
 
 #[cfg(test)]

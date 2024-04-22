@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! FFI methods exposed over the C ABI.
 
-use core::{ffi::c_char, fmt, mem::MaybeUninit, ptr::NonNull};
+use core::{ffi::c_char, mem::MaybeUninit, ptr::NonNull};
 
 use crate::{
   alloc_types::*,
@@ -81,17 +81,12 @@ pub extern "C" fn rex_compile(
       Ok(m) => m,
       Err(e) => match e {
         emacs_regexp::RegexpError::ParseError(e) => {
-          let mut w = crate::util::Writer::with_initial_capacity_in(200, alloc);
-          {
-            let mut f = fmt::Formatter::new(&mut w);
-            let _ = fmt::Debug::fmt(&e, &mut f);
-          }
-          let _ = w.write_null_byte();
-          let (p, _alloc) = Box::into_raw_with_allocator(w.into_boxed());
-          let p: NonNull<[u8]> = unsafe { NonNull::new_unchecked(p) };
-          let p: NonNull<u8> = unsafe { NonNull::new_unchecked(p.as_mut_ptr()) };
+          let e: Box<str, CallbackAllocator> = crate::util::Writer::debug_in(e, alloc).unwrap();
+          let e: Box<[u8], CallbackAllocator> =
+            crate::util::boxing::reallocate_with_trailing_null(e);
+          let (p, _alloc) = crate::util::boxing::box_c_char(e);
           unsafe {
-            (*out.as_mut_ptr()).error = Some(p.cast());
+            (*out.as_mut_ptr()).error = Some(p);
           }
           return RegexpError::ParseError;
         },
@@ -118,17 +113,12 @@ pub extern "C" fn rex_compile(
 pub extern "C" fn rex_display_expr(
   matcher: &Matcher,
   alloc: &CallbackAllocator,
-) -> Option<NonNull<c_char>> {
-  let mut w = crate::util::Writer::with_initial_capacity_in(400, *alloc);
-  {
-    let mut f = fmt::Formatter::new(&mut w);
-    let _ = fmt::Debug::fmt(matcher.as_matcher(), &mut f);
-  }
-  let _ = w.write_null_byte();
-  let (p, _ea) = Box::into_raw_with_allocator(w.into_boxed());
-  let p: NonNull<[u8]> = unsafe { NonNull::new_unchecked(p) };
-  let p: NonNull<u8> = unsafe { NonNull::new_unchecked(p.as_mut_ptr()) };
-  Some(p.cast())
+) -> NonNull<c_char> {
+  let m: Box<str, CallbackAllocator> =
+    crate::util::Writer::debug_in(matcher.as_matcher(), *alloc).unwrap();
+  let m: Box<[u8], CallbackAllocator> = crate::util::boxing::reallocate_with_trailing_null(m);
+  let (p, _alloc) = crate::util::boxing::box_c_char(m);
+  p
 }
 
 #[must_use]
@@ -168,7 +158,7 @@ mod test {
     let ast = format!("{:?}", m.as_matcher().expr);
     let expected = "Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] }";
     assert_eq!(ast, expected);
-    let e = rex_display_expr(&m, &c).unwrap();
+    let e = rex_display_expr(&m, &c);
     let s_e: &str = unsafe { core::ffi::CStr::from_ptr(mem::transmute(e)) }
       .to_str()
       .unwrap();
