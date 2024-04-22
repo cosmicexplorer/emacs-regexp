@@ -842,8 +842,6 @@ where A: Allocator+Clone {
         },
       };
       components.push(postfixed_expr);
-      group_context.push((ctx_kind, components));
-      continue;
     }
 
     let new_component = match byte {

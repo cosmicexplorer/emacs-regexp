@@ -966,11 +966,7 @@ pub mod expr {
           Ok(())
         },
         Self::Concatenation { components } => {
-          #[cfg(test)]
-          eprintln!("l={}", components.len());
           for c in components.iter() {
-            #[cfg(test)]
-            eprintln!("c={}", c);
             write!(f, "{}", c)?;
           }
           Ok(())
