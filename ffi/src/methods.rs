@@ -185,7 +185,7 @@ mod test {
     let s: &str = unsafe { core::ffi::CStr::from_ptr(mem::transmute(e)) }
       .to_str()
       .unwrap();
-    assert_eq!(s, "ParseError { kind: UnmatchedCloseParen, at: 3 }");
+    assert_eq!(s, "ParseError { kind: UnmatchedCloseParen, at: 2 }");
 
     use core::alloc::Allocator;
     unsafe {

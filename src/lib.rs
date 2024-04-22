@@ -42,7 +42,7 @@ pub use emacs_regexp_syntax as syntax;
 use emacs_regexp_syntax::{
   ast::expr::Expr,
   encoding::ByteEncoding,
-  parser::{parse_bytes, ParseError},
+  parser::{parse, ParseError},
 };
 use thiserror::Error;
 
@@ -135,7 +135,7 @@ where
     };
 
     /* Parse the pattern string into an AST! */
-    let expr: Expr<ByteEncoding, AExpr> = parse_bytes(data, alloc_expr)?;
+    let expr: Expr<ByteEncoding, AExpr> = parse::<ByteEncoding, _>(data, alloc_expr)?;
 
     Ok(Self {
       data: new_data,
