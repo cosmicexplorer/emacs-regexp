@@ -198,8 +198,6 @@ pub enum ParseErrorKind {
   InvalidExplicitGroupNumber,
   /// unmatched open paren
   UnmatchedOpenParen,
-  /// internal logic error
-  InternalLogicError,
   /// invalid state at end of pattern
   InvalidEndState,
 }
@@ -244,10 +242,9 @@ where A: Allocator+Clone {
   let mut currently_within_group_number: Option<Vec<u8, A>> = None;
 
   for (i, byte) in pattern.iter().enumerate() {
-    let (mut ctx_kind, mut components) = group_context.pop().ok_or(ParseError {
-      kind: ParseErrorKind::InternalLogicError,
-      at: i,
-    })?;
+    #[cfg(test)]
+    dbg!(char::from_u32(*byte as u32).unwrap());
+    let (mut ctx_kind, mut components) = group_context.pop().unwrap();
 
     if previous_was_special_group {
       previous_was_special_group = false;
@@ -623,12 +620,10 @@ where A: Allocator+Clone {
         b'\\' => {
           previous_was_closing_backslash_of_repeat = true;
           currently_second_repeat_arg = Some(second_repeat_arg);
-          continue;
         },
         x @ (b'0' | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' | b'8' | b'9') => {
           second_repeat_arg.push(*x);
           currently_second_repeat_arg = Some(second_repeat_arg);
-          continue;
         },
         _ => {
           return Err(ParseError {
@@ -637,13 +632,14 @@ where A: Allocator+Clone {
           })
         },
       }
+      group_context.push((ctx_kind, components));
+      continue;
     }
     if let Some(mut first_repeat_arg) = currently_first_repeat_arg.take() {
       match byte {
         b'\\' => {
           previous_was_closing_backslash_of_repeat = true;
           currently_first_repeat_arg = Some(first_repeat_arg);
-          continue;
         },
         b',' => {
           currently_first_repeat_arg = Some(first_repeat_arg);
@@ -652,7 +648,6 @@ where A: Allocator+Clone {
         x @ (b'0' | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' | b'8' | b'9') => {
           first_repeat_arg.push(*x);
           currently_first_repeat_arg = Some(first_repeat_arg);
-          continue;
         },
         _ => {
           return Err(ParseError {
@@ -661,6 +656,8 @@ where A: Allocator+Clone {
           })
         },
       }
+      group_context.push((ctx_kind, components));
+      continue;
     }
 
     if previous_was_backslash {
@@ -1112,7 +1109,13 @@ mod test {
 
   #[test]
   fn parse_repeat() {
-    let _parsed = parse_bytes(b"asdf+a.a\\{2\\}", Global).unwrap();
-    ()
+    let parsed = parse_bytes(b"a\\{2\\}", Global).unwrap();
+    assert_eq!(parsed, Expr::Postfix {
+      inner: Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+      op: PostfixOp::Repeat(RepeatOperator::Exact(ExactRepeatOperator {
+        times: RepeatNumeral(2)
+      })),
+    });
+    assert_eq!(&format!("{}", parsed), "a\\{2\\}");
   }
 }
