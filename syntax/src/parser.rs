@@ -662,16 +662,15 @@ where A: Allocator+Clone {
     }
 
     if previous_was_backslash {
+      previous_was_backslash = false;
       let new_component = match byte {
         b'_' => {
-          previous_was_backslash = false;
           previous_two_were_backslash_underscore = true;
           group_context.push((ctx_kind, components));
           continue;
         },
         b'|' => ContextComponent::Alternator,
         b'(' => {
-          previous_was_backslash = false;
           previous_was_open_group = true;
           group_context.push((ctx_kind, components));
           continue;
@@ -734,28 +733,24 @@ where A: Allocator+Clone {
           }),
         )),
         b's' => {
-          previous_was_backslash = false;
           previous_was_syntax_code = true;
           previous_code_negation = Some(Negation::Standard);
           group_context.push((ctx_kind, components));
           continue;
         },
         b'S' => {
-          previous_was_backslash = false;
           previous_was_syntax_code = true;
           previous_code_negation = Some(Negation::Negated);
           group_context.push((ctx_kind, components));
           continue;
         },
         b'c' => {
-          previous_was_backslash = false;
           previous_was_category_code = true;
           previous_code_negation = Some(Negation::Standard);
           group_context.push((ctx_kind, components));
           continue;
         },
         b'C' => {
-          previous_was_backslash = false;
           previous_was_category_code = true;
           previous_code_negation = Some(Negation::Negated);
           group_context.push((ctx_kind, components));
@@ -764,7 +759,6 @@ where A: Allocator+Clone {
         x => ContextComponent::EscapedLiteral(Escaped(SingleLiteral(*x))),
       };
       components.push(new_component);
-      previous_was_backslash = false;
       group_context.push((ctx_kind, components));
       continue;
     }
@@ -920,5 +914,26 @@ mod test {
       parsed,
       Expr::<ByteEncoding, Global>::EscapedLiteral(Escaped(SingleLiteral(b'a')))
     );
+
+    let parsed = parse_bytes(b"asdf\\(.\\)+a", Global).unwrap();
+    assert_eq!(parsed, Expr::<ByteEncoding, Global>::Concatenation {
+      components: vec![
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b's'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'd'))),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'f'))),
+        Box::new(Expr::Postfix {
+          inner: Box::new(Expr::Group {
+            kind: GroupKind::Basic,
+            inner: Box::new(Expr::CharSelector(SingleCharSelector::Dot)),
+          }),
+          op: PostfixOp::Simple(MaybeGreedyOperator {
+            greediness: GreedyBehavior::Greedy,
+            op: SimpleOperator::Plus,
+          }),
+        }),
+        Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))),
+      ]
+    });
   }
 }
