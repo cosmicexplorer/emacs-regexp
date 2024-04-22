@@ -98,7 +98,11 @@ where
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let Self { data, expr } = self;
     let data = str::from_utf8(&data).expect("TODO: non-utf8 patterns!");
-    write!(f, "Matcher {{ data: {:?}, expr: {:?} }}", data, expr)
+    write!(
+      f,
+      "Matcher {{ data: {:?}, expr(\"{}\"): {:?} }}",
+      data, expr, expr
+    )
   }
 }
 
