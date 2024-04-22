@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 /// AST for regexp pattern strings.
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Negation {
   #[default]
   Standard,
@@ -185,14 +186,18 @@ pub mod character_alternatives {
   use core::{alloc::Allocator, fmt, hash};
 
   #[cfg(test)]
-  use {proptest::prelude::*, proptest_derive::Arbitrary};
+  use proptest::{
+    collection::vec,
+    prelude::*,
+    strategy::{BoxedStrategy, Map, Union},
+  };
 
   use super::literals::single::SingleLiteral;
   use crate::{alloc_types::*, encoding::LiteralEncoding};
 
   /// See <https://www.gnu.org/software/emacs/manual/html_node/elisp/Char-Classes.html#Char-Classes>.
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-  #[cfg_attr(test, derive(Arbitrary))]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum CharacterClass {
     /// `[:ascii:]`
     ASCII,
@@ -229,6 +234,8 @@ pub mod character_alternatives {
     /// `[:punct:]`
     Punctuation, /* syntax table! */
   }
+  #[cfg(test)]
+  static_assertions::assert_type_eq_all!(<CharacterClass as Arbitrary>::Parameters, ());
 
   impl fmt::Display for CharacterClass {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -267,6 +274,33 @@ pub mod character_alternatives {
     },
     /// `[:ascii:]`
     Class(CharacterClass),
+  }
+
+  #[cfg(test)]
+  impl<L> Arbitrary for CharAltComponent<L>
+  where
+    L: LiteralEncoding+'static,
+    L::Single: Arbitrary,
+    <L::Single as Arbitrary>::Strategy: Clone,
+  {
+    type Parameters = <L::Single as Arbitrary>::Parameters;
+    type Strategy = Union<BoxedStrategy<Self>>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+      let s = <SingleLiteral<L> as Arbitrary>::arbitrary_with(args);
+      Union::new([
+        s.clone().prop_map(|s| Self::SingleLiteral(s)).boxed(),
+        (s.clone(), s.clone())
+          .prop_map(|(s1, s2)| Self::LiteralRange {
+            left: s1,
+            right: s2,
+          })
+          .boxed(),
+        any::<CharacterClass>()
+          .prop_map(|cc| Self::Class(cc))
+          .boxed(),
+      ])
+    }
   }
 
   impl<L> Clone for CharAltComponent<L>
@@ -356,6 +390,7 @@ pub mod character_alternatives {
   }
 
   #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum ComplementBehavior {
     #[default]
     Uncomplemented,
@@ -371,6 +406,33 @@ pub mod character_alternatives {
   {
     pub complemented: ComplementBehavior,
     pub elements: Vec<CharAltComponent<L>, A>,
+  }
+
+  #[cfg(test)]
+  impl<L, A> Arbitrary for CharacterAlternative<L, A>
+  where
+    L: LiteralEncoding+'static,
+    L::Single: Arbitrary,
+    <L::Single as Arbitrary>::Strategy: Clone,
+    A: Allocator+Clone+Default+'static,
+  {
+    type Parameters = (<L::Single as Arbitrary>::Parameters, usize, A);
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+      let (args, len, alloc) = args;
+      let s = <CharAltComponent<L> as Arbitrary>::arbitrary_with(args);
+      (vec(s, 0..=len), any::<ComplementBehavior>())
+        .prop_map(move |(elements, complemented)| {
+          let mut v = Vec::with_capacity_in(elements.len(), alloc.clone());
+          v.extend_from_slice(&elements[..]);
+          Self {
+            complemented,
+            elements: v,
+          }
+        })
+        .boxed()
+    }
   }
 
   impl<L, A> Clone for CharacterAlternative<L, A>
@@ -450,7 +512,11 @@ pub mod character_alternatives {
 pub mod postfix_operators {
   use core::fmt;
 
+  #[cfg(test)]
+  use proptest::prelude::*;
+
   #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum GreedyBehavior {
     #[default]
     Greedy,
@@ -458,6 +524,7 @@ pub mod postfix_operators {
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum SimpleOperator {
     Star,
     Plus,
@@ -475,6 +542,7 @@ pub mod postfix_operators {
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub struct MaybeGreedyOperator {
     pub op: SimpleOperator,
     pub greediness: GreedyBehavior,
@@ -492,6 +560,7 @@ pub mod postfix_operators {
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   #[repr(transparent)]
   pub struct RepeatNumeral(pub usize);
 
@@ -500,6 +569,7 @@ pub mod postfix_operators {
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   #[repr(transparent)]
   pub struct ExactRepeatOperator {
     pub times: RepeatNumeral,
@@ -513,6 +583,7 @@ pub mod postfix_operators {
   /// {0,} or {,}   => *
   /// {1,}          => +
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub struct GeneralRepeatOperator {
     pub left: Option<RepeatNumeral>,
     pub right: Option<RepeatNumeral>,
@@ -531,6 +602,7 @@ pub mod postfix_operators {
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum RepeatOperator {
     Exact(ExactRepeatOperator),
     General(GeneralRepeatOperator),
@@ -546,6 +618,7 @@ pub mod postfix_operators {
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum PostfixOp {
     Simple(MaybeGreedyOperator),
     Repeat(RepeatOperator),
@@ -567,6 +640,7 @@ pub mod anchors {
   use super::Negation;
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum StartAnchor {
     /// ^
     Carat,
@@ -590,6 +664,7 @@ pub mod anchors {
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum EndAnchor {
     /// $
     Dollar,
@@ -614,6 +689,7 @@ pub mod anchors {
 
   /// \=
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub struct PointAnchor;
 
   impl fmt::Display for PointAnchor {
@@ -622,6 +698,7 @@ pub mod anchors {
 
   /// \b or \B (negated)
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   #[repr(transparent)]
   pub struct WordAnchor {
     pub negation: Negation,
@@ -637,6 +714,7 @@ pub mod anchors {
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum Anchor {
     Start(StartAnchor),
     End(EndAnchor),
@@ -657,9 +735,13 @@ pub mod anchors {
 }
 
 pub mod groups {
-  use core::{fmt, num::NonZeroUsize};
+  use core::{ascii, fmt, num::NonZeroUsize};
+
+  #[cfg(test)]
+  use proptest::{prelude::*, strategy::BoxedStrategy};
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   #[repr(transparent)]
   pub struct ExplicitGroupIndex(pub NonZeroUsize);
 
@@ -668,6 +750,7 @@ pub mod groups {
   }
 
   #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum GroupKind {
     /// `\(...\)`
     Basic,
@@ -683,12 +766,27 @@ pub mod groups {
   #[repr(transparent)]
   pub struct BackrefIndex(pub u8);
 
+  #[cfg(test)]
+  impl Arbitrary for BackrefIndex {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_args: ()) -> Self::Strategy { (1u8..=9).prop_map(|i| Self(i)).boxed() }
+  }
+
   impl fmt::Display for BackrefIndex {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      write!(
+        f,
+        "{}",
+        ascii::Char::digit(self.0).expect("backref index should be within 1..=9")
+      )
+    }
   }
 
   /// `\1 -> \9`
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   #[repr(transparent)]
   pub struct Backref(pub BackrefIndex);
 
@@ -700,10 +798,14 @@ pub mod groups {
 pub mod char_properties {
   use core::{ascii, fmt};
 
+  #[cfg(test)]
+  use proptest::{prelude::*, strategy::BoxedStrategy};
+
   use super::Negation;
 
   /// `\w` or `\W` *(negated)*
   #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   #[repr(transparent)]
   pub struct WordChar {
     pub negation: Negation,
@@ -722,12 +824,25 @@ pub mod char_properties {
   #[repr(transparent)]
   pub struct SyntaxCode(pub ascii::Char);
 
+  #[cfg(test)]
+  impl Arbitrary for SyntaxCode {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_args: ()) -> Self::Strategy {
+      (0u8..=127)
+        .prop_map(|c| Self(ascii::Char::from_u8(c).unwrap()))
+        .boxed()
+    }
+  }
+
   impl fmt::Display for SyntaxCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
   }
 
   /// `\s<code>` or `\S<code>` *(negated)*
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub struct SyntaxChar {
     pub code: SyntaxCode,
     pub negation: Negation,
@@ -746,12 +861,25 @@ pub mod char_properties {
   #[repr(transparent)]
   pub struct CategoryCode(pub ascii::Char);
 
+  #[cfg(test)]
+  impl Arbitrary for CategoryCode {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_args: ()) -> Self::Strategy {
+      (0u8..=127)
+        .prop_map(|c| Self(ascii::Char::from_u8(c).unwrap()))
+        .boxed()
+    }
+  }
+
   impl fmt::Display for CategoryCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
   }
 
   /// `\c<code>` or `\C<code>` *(negated)*
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub struct CategoryChar {
     pub code: CategoryCode,
     pub negation: Negation,
@@ -767,6 +895,7 @@ pub mod char_properties {
   }
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum CharPropertiesSelector {
     Word(WordChar),
     Syntax(SyntaxChar),
@@ -788,6 +917,13 @@ pub mod char_properties {
 /// See <https://www.gnu.org/software/emacs/manual/html_node/emacs/Regexps.html>.
 pub mod expr {
   use core::{alloc::Allocator, fmt};
+
+  #[cfg(test)]
+  use proptest::{
+    collection::vec,
+    prelude::*,
+    strategy::{BoxedStrategy, Union},
+  };
 
   use super::{
     anchors::Anchor,
@@ -811,6 +947,33 @@ pub mod expr {
     ///
     /// Any char except newline.
     Dot,
+  }
+
+  #[cfg(test)]
+  impl<L, A> Arbitrary for SingleCharSelector<L, A>
+  where
+    L: LiteralEncoding+'static,
+    L::Single: Arbitrary,
+    <L::Single as Arbitrary>::Strategy: Clone,
+    <L::Single as Arbitrary>::Parameters: Clone,
+    A: Allocator+Clone+Default+'static,
+  {
+    type Parameters = <CharacterAlternative<L, A> as Arbitrary>::Parameters;
+    type Strategy = Union<BoxedStrategy<Self>>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+      let (ref single_args, _, _) = args;
+      let e = <Escaped<L> as Arbitrary>::arbitrary_with(single_args.clone());
+      let s = <CharacterAlternative<L, A> as Arbitrary>::arbitrary_with(args);
+      Union::new([
+        any::<CharPropertiesSelector>()
+          .prop_map(|cps| Self::Prop(cps))
+          .boxed(),
+        s.prop_map(|ca| Self::Alt(ca)).boxed(),
+        e.prop_map(|e| Self::Esc(e)).boxed(),
+        Just(Self::Dot).boxed(),
+      ])
+    }
   }
 
   impl<L, A> Clone for SingleCharSelector<L, A>
@@ -913,6 +1076,72 @@ pub mod expr {
     Concatenation {
       components: Vec<Box<Expr<L, A>, A>, A>,
     },
+  }
+
+  #[cfg(test)]
+  impl<L, A> Arbitrary for Expr<L, A>
+  where
+    L: LiteralEncoding+'static,
+    L::Single: Arbitrary,
+    <L::Single as Arbitrary>::Strategy: Clone,
+    <L::Single as Arbitrary>::Parameters: Clone,
+    A: Allocator+Clone+Default+fmt::Debug+'static,
+  {
+    type Parameters = (
+      <SingleCharSelector<L, A> as Arbitrary>::Parameters,
+      u32,
+      u32,
+      u32,
+      usize,
+      usize,
+    );
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+      let (scs_args, depth, desired_size, expected_branch_size, alts_len, concs_len) = args;
+      let (ref single_args, _, ref alloc) = scs_args;
+      let single_args = single_args.clone();
+      let alloc = Just(alloc.clone());
+
+      let sl = <SingleLiteral<L> as Arbitrary>::arbitrary_with(single_args.clone());
+      let e = <Escaped<L> as Arbitrary>::arbitrary_with(single_args);
+      let scs = <SingleCharSelector<L, A> as Arbitrary>::arbitrary_with(scs_args);
+
+      let leaves = Union::new([
+        sl.prop_map(|sl| Self::SingleLiteral(sl)).boxed(),
+        e.prop_map(|e| Self::EscapedLiteral(e)).boxed(),
+        any::<Backref>().prop_map(|br| Self::Backref(br)).boxed(),
+        any::<Anchor>().prop_map(|a| Self::Anchor(a)).boxed(),
+        scs.prop_map(|scs| Self::CharSelector(scs)).boxed(),
+      ]);
+      leaves
+        .prop_recursive(depth, desired_size, expected_branch_size, move |expr| {
+          let inner = (expr, alloc.clone()).prop_map(|(expr, alloc)| Box::new_in(expr, alloc));
+          Union::new([
+            (any::<PostfixOp>(), inner.clone())
+              .prop_map(|(op, inner)| Self::Postfix { inner, op })
+              .boxed(),
+            (any::<GroupKind>(), inner.clone())
+              .prop_map(|(kind, inner)| Self::Group { kind, inner })
+              .boxed(),
+            (vec(inner.clone(), 0..=alts_len), alloc.clone())
+              .prop_map(|(cases, alloc)| {
+                let mut v = Vec::with_capacity_in(cases.len(), alloc);
+                v.extend_from_slice(&cases[..]);
+                Self::Alternation { cases: v }
+              })
+              .boxed(),
+            (vec(inner, 0..=concs_len), alloc.clone())
+              .prop_map(|(components, alloc)| {
+                let mut v = Vec::with_capacity_in(components.len(), alloc);
+                v.extend_from_slice(&components[..]);
+                Self::Concatenation { components: v }
+              })
+              .boxed(),
+          ])
+        })
+        .boxed()
+    }
   }
 
   impl<L, A> Clone for Expr<L, A>

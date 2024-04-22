@@ -91,6 +91,7 @@ dependencies = [
  "displaydoc",
  "proptest",
  "proptest-derive",
+ "static_assertions",
  "thiserror",
 ]
 
