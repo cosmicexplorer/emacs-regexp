@@ -659,7 +659,7 @@ pub mod groups {
 }
 
 pub mod char_properties {
-  use core::fmt;
+  use core::{ascii, fmt};
 
   use super::Negation;
 
@@ -681,7 +681,7 @@ pub mod char_properties {
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
-  pub struct SyntaxCode(pub u8);
+  pub struct SyntaxCode(pub ascii::Char);
 
   impl fmt::Display for SyntaxCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
@@ -705,7 +705,7 @@ pub mod char_properties {
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[repr(transparent)]
-  pub struct CategoryCode(pub u8);
+  pub struct CategoryCode(pub ascii::Char);
 
   impl fmt::Display for CategoryCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
