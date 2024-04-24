@@ -498,6 +498,23 @@ static_assertions::const_assert_eq!(
   max_value_for_bit_width_32(SingleChar::BITS)
 );
 
+struct CodepointIterator<'a> {
+  data: &'a [u8],
+}
+
+impl<'a> Iterator for CodepointIterator<'a> {
+  type Item = EncodedChar;
+
+  fn next(&mut self) -> Option<EncodedChar> {
+    if self.data.is_empty() {
+      return None;
+    }
+    let (ret, new_data) = EncodedChar::try_parse(self.data).unwrap();
+    self.data = new_data;
+    Some(ret)
+  }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct PackedString<'a>(&'a [u8]);
@@ -511,10 +528,13 @@ impl<'a> PackedString<'a> {
 
   pub fn try_from_bytes(bytes: &'a [u8]) -> Self { todo!() }
 
-  pub fn iter_chars(&self) -> impl Iterator<Item=SingleChar> {
-    todo!();
-    #[allow(unreachable_code)]
-    [].iter().copied()
+  pub fn iter_encoded_chars(&self) -> impl Iterator<Item=EncodedChar>+'_ {
+    let Self(data) = self;
+    CodepointIterator { data }
+  }
+
+  pub fn iter_uniform_chars(&self) -> impl Iterator<Item=SingleChar>+'_ {
+    self.iter_encoded_chars().map(EncodedChar::into_uniform)
   }
 }
 
@@ -536,6 +556,8 @@ where A: Allocator
 
 #[cfg(test)]
 mod test {
+  use super::*;
+
   #[test]
   fn ok() {
     assert!(true);
