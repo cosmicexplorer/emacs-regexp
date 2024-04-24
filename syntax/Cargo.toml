@@ -8,6 +8,8 @@ repository.workspace    = true
 authors.workspace       = true
 
 [dependencies]
+emacs-multibyte.workspace = true
+
 cfg-if.workspace        = true
 displaydoc.workspace    = true
 static_assertions.workspace = true
