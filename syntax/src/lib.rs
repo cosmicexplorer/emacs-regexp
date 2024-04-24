@@ -424,7 +424,7 @@ pub mod encoding {
     fn iter(s: &Self::Str) -> impl Iterator<Item=u32> {
       todo!("multibyte not yet supported: {:?}", s);
       #[allow(unreachable_code)]
-      [0u32].iter().copied()
+      [].iter().copied()
     }
 
     type String<A: Allocator> = Box<[u8], A>;
