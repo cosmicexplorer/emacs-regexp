@@ -79,6 +79,13 @@ const fn past_five_char_to_byte8(x: u32) -> u32 {
   x - 0x3FFF00
 }
 
+#[inline(always)]
+const fn transpose_uninit_array<T, const N: usize>(
+  x: &mut [MaybeUninit<T>; N],
+) -> &mut MaybeUninit<[T; N]> {
+  unsafe { mem::transmute(x) }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DecodeError {
   Empty,
@@ -330,7 +337,10 @@ impl EncodedChar {
   }
 
   #[inline]
-  pub fn try_write(self, x: &mut [MaybeUninit<u8>]) -> Result<&mut [MaybeUninit<u8>], EncodeError> {
+  pub fn try_write<'a>(
+    &self,
+    x: &'a mut [MaybeUninit<u8>],
+  ) -> Result<&'a mut [MaybeUninit<u8>], EncodeError> {
     if x.is_empty() {
       return Err(EncodeError::Empty);
     }
@@ -351,32 +361,32 @@ impl EncodedChar {
       },
       Self::Two(data) => {
         let (head, rest): (&mut [MaybeUninit<u8>; 2], _) = x.split_first_chunk_mut().unwrap();
-        let head: &mut MaybeUninit<[u8; 2]> = unsafe { mem::transmute(head) };
-        head.write(data);
+        let head: &mut MaybeUninit<[u8; 2]> = transpose_uninit_array(head);
+        head.write(*data);
         rest
       },
       Self::PastFive(data) => {
         let (head, rest): (&mut [MaybeUninit<u8>; 2], _) = x.split_first_chunk_mut().unwrap();
-        let head: &mut MaybeUninit<[u8; 2]> = unsafe { mem::transmute(head) };
-        head.write(data);
+        let head: &mut MaybeUninit<[u8; 2]> = transpose_uninit_array(head);
+        head.write(*data);
         rest
       },
       Self::Three(data) => {
         let (head, rest): (&mut [MaybeUninit<u8>; 3], _) = x.split_first_chunk_mut().unwrap();
-        let head: &mut MaybeUninit<[u8; 3]> = unsafe { mem::transmute(head) };
-        head.write(data);
+        let head: &mut MaybeUninit<[u8; 3]> = transpose_uninit_array(head);
+        head.write(*data);
         rest
       },
       Self::Four(data) => {
         let (head, rest): (&mut [MaybeUninit<u8>; 4], _) = x.split_first_chunk_mut().unwrap();
-        let head: &mut MaybeUninit<[u8; 4]> = unsafe { mem::transmute(head) };
-        head.write(data);
+        let head: &mut MaybeUninit<[u8; 4]> = transpose_uninit_array(head);
+        head.write(*data);
         rest
       },
       Self::Five(data) => {
         let (head, rest): (&mut [MaybeUninit<u8>; 5], _) = x.split_first_chunk_mut().unwrap();
-        let head: &mut MaybeUninit<[u8; 5]> = unsafe { mem::transmute(head) };
-        head.write(data);
+        let head: &mut MaybeUninit<[u8; 5]> = transpose_uninit_array(head);
+        head.write(*data);
         rest
       },
     })
@@ -559,7 +569,29 @@ pub type String<A> = OwnedString<A>;
 impl<A> OwnedString<A>
 where A: Allocator
 {
-  pub fn coalesce_chars(unpacked: &[SingleChar], alloc: A) -> Self { todo!() }
+  #[inline]
+  pub fn coalesce_chars(unpacked: impl Iterator<Item=SingleChar>, alloc: A) -> Self {
+    let mut buf: Vec<u8, A> = Vec::new_in(alloc);
+
+    for c in unpacked.map(EncodedChar::from_uniform) {
+      let remaining = buf.spare_capacity_mut();
+      match c.try_write(remaining) {
+        Ok(_) => (),
+        Err(_) => {
+          debug_assert!(remaining.len() < SingleChar::MAX_MULTIBYTE_LENGTH);
+          buf.reserve(c.byte_len());
+          let _ = c
+            .try_write(buf.spare_capacity_mut())
+            .expect("encoding should work after reserve call");
+        },
+      }
+      unsafe {
+        buf.set_len(buf.len() + c.byte_len());
+      }
+    }
+
+    Self(buf.into_boxed_slice())
+  }
 
   #[inline(always)]
   pub const fn as_str(&self) -> PackedString {
