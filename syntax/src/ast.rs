@@ -1143,6 +1143,10 @@ pub mod expr {
       leaves
         .prop_recursive(depth, desired_size, expected_branch_size, move |expr| {
           let inner = (expr, alloc.clone()).prop_map(|(expr, alloc)| Box::new_in(expr, alloc));
+          /* It is impossible to get the parser to generate an alternation or
+           * concatenation with <2 elements, so don't generate them. */
+          assert!(alts_len >= 2);
+          assert!(concs_len >= 2);
           Union::new([
             (any::<PostfixOp>(), inner.clone())
               .prop_map(|(op, inner)| Self::Postfix { inner, op })
@@ -1150,14 +1154,14 @@ pub mod expr {
             (any::<GroupKind>(), inner.clone())
               .prop_map(|(kind, inner)| Self::Group { kind, inner })
               .boxed(),
-            (vec(inner.clone(), 0..=alts_len), alloc.clone())
+            (vec(inner.clone(), 2..=alts_len), alloc.clone())
               .prop_map(|(cases, alloc)| {
                 let mut v = Vec::with_capacity_in(cases.len(), alloc);
                 v.extend_from_slice(&cases[..]);
                 Self::Alternation { cases: v }
               })
               .boxed(),
-            (vec(inner, 0..=concs_len), alloc.clone())
+            (vec(inner, 2..=concs_len), alloc.clone())
               .prop_map(|(components, alloc)| {
                 let mut v = Vec::with_capacity_in(components.len(), alloc);
                 v.extend_from_slice(&components[..]);
@@ -1398,14 +1402,4 @@ mod test {
     };
     assert_eq!(&format!("{}", e), "asdf+aa");
   }
-}
-
-#[cfg(test)]
-pub(crate) mod proptest_strategies {
-  use proptest::prelude::*;
-
-  use super::{expr::*, groups::*, literals::single::*, postfix_operators::*};
-  use crate::encoding::UnicodeEncoding;
-
-  /* prop_compose! {} */
 }

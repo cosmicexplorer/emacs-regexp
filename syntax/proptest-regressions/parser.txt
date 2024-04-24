@@ -6,3 +6,5 @@
 # everyone who runs the test benefits from these saved cases.
 cc a3c83e2243035b8c8557f9dd244d3703da2bf4d7d17bf9a2800b683123816154 # shrinks to e = Expr::Group { kind: Basic, inner: Expr::CharSelector(SingleCharSelector::Alt(CharacterAlternative { complemented: Uncomplemented, elements: [] })) }
 cc 0893cf864103e2949ad718dc7c792d2e5dc24407552a5cc1092574fa352fb798 # shrinks to e = Expr::Alternation { cases: [] }
+cc 11e742ac717a17ff21bb7c46decb4b78697afce77b9cb7c6f025e5a9387394e4 # shrinks to e = Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral('¡'))] }
+cc f4385907f85b30d5769304660f1198ac04308809b3de81fa162b057a4b0969e3 # shrinks to e = Expr::Concatenation { components: [Expr::Alternation { cases: [Expr::SingleLiteral(SingleLiteral('¡')), Expr::SingleLiteral(SingleLiteral(' '))] }, Expr::SingleLiteral(SingleLiteral('\0'))] }
