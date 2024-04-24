@@ -57,6 +57,8 @@ name = "emacs-multibyte"
 version = "0.0.0"
 dependencies = [
  "cfg-if",
+ "proptest",
+ "proptest-derive",
  "static_assertions",
 ]
 

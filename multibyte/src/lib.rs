@@ -52,9 +52,12 @@ extern crate alloc;
 
 use core::{
   alloc::Allocator,
-  ascii,
+  ascii, fmt,
   mem::{self, MaybeUninit},
 };
+
+#[cfg(test)]
+use proptest::{collection::vec, prelude::*};
 
 
 #[allow(dead_code)]
@@ -65,6 +68,14 @@ const fn max_value_for_bit_width_64(bits: u8) -> u64 { (1u64 << (bits as u64)) -
 #[repr(transparent)]
 pub struct SingleChar(u32);
 pub type Char = SingleChar;
+
+#[cfg(test)]
+impl Arbitrary for SingleChar {
+  type Parameters = ();
+  type Strategy = BoxedStrategy<Self>;
+
+  fn arbitrary_with(_args: ()) -> Self::Strategy { (0u32..=Self::MAX_CHAR).prop_map(Self).boxed() }
+}
 
 #[inline(always)]
 const fn assume_byte(x: u32) -> u8 {
@@ -109,6 +120,16 @@ pub enum EncodedChar {
   Four([u8; 4]),
   Five([u8; 5]),
   PastFive([u8; 2]),
+}
+
+#[cfg(test)]
+impl Arbitrary for EncodedChar {
+  type Parameters = ();
+  type Strategy = BoxedStrategy<Self>;
+
+  fn arbitrary_with(_args: ()) -> Self::Strategy {
+    any::<SingleChar>().prop_map(Self::from_uniform).boxed()
+  }
 }
 
 impl EncodedChar {
@@ -393,7 +414,7 @@ impl EncodedChar {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ValueClass {
+enum ValueClass {
   One,
   Two,
   Three,
@@ -437,7 +458,7 @@ impl SingleChar {
   const MAX_5_BYTE_CHAR: u32 = 0x3FFF7F;
 
   #[inline(always)]
-  pub const fn calculate_value_class(&self) -> ValueClass {
+  const fn calculate_value_class(&self) -> ValueClass {
     let c = self.as_u32();
     debug_assert!(c <= Self::MAX_CHAR);
     if c <= Self::MAX_1_BYTE_CHAR {
@@ -517,6 +538,12 @@ impl<'a> PackedString<'a> {
   #[inline(always)]
   pub const unsafe fn from_bytes(bytes: &'a [u8]) -> Self { Self(bytes) }
 
+  #[inline(always)]
+  pub const fn as_bytes(&self) -> &'a [u8] {
+    let Self(data) = self;
+    data
+  }
+
   #[inline]
   pub fn try_from_bytes(bytes: &'a [u8]) -> Result<(Self, usize), DecodeError> {
     let mut remaining = bytes;
@@ -550,6 +577,28 @@ impl<'a> PackedString<'a> {
 #[repr(transparent)]
 pub struct OwnedString<A: Allocator>(Box<[u8], A>);
 pub type String<A> = OwnedString<A>;
+
+impl<A: Allocator> fmt::Debug for OwnedString<A> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let Self(data) = self;
+    write!(f, "{:?}", data)
+  }
+}
+
+#[cfg(test)]
+impl<A> Arbitrary for OwnedString<A>
+where A: Allocator+Clone+Default+fmt::Debug+'static
+{
+  type Parameters = (usize, A);
+  type Strategy = BoxedStrategy<Self>;
+
+  fn arbitrary_with(args: (usize, A)) -> Self::Strategy {
+    let (max_len, alloc) = args;
+    (vec(any::<SingleChar>(), 0..=max_len), Just(alloc))
+      .prop_map(|(packed_chars, alloc)| Self::coalesce_chars(packed_chars.into_iter(), alloc))
+      .boxed()
+  }
+}
 
 impl<A> OwnedString<A>
 where A: Allocator
