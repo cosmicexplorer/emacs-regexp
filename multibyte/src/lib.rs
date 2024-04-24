@@ -102,10 +102,10 @@ const fn transpose_uninit_array<T, const N: usize>(
 pub enum DecodeError {
   Empty,
   NotEnoughSpace { required: u8, available: u8 },
-  InvalidWValue(i32),
-  InvalidW1Value(i32),
-  InvalidW2Value(i32),
-  InvalidW3Value(i64),
+  InvalidWValue(u32),
+  InvalidW1Value(u32),
+  InvalidW2Value(u32),
+  InvalidW3Value(u64),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -121,7 +121,7 @@ pub enum EncodedChar {
   Three([u8; 3]),
   Four([u8; 4]),
   Five([u8; 5]),
-  PastFive([u8; 2]),
+  Raw([u8; 2]),
 }
 
 #[cfg(test)]
@@ -184,12 +184,12 @@ impl EncodedChar {
         out[4] = assume_byte(c4);
         Self::Five(out)
       },
-      ValueClass::PastFive => {
+      ValueClass::Raw => {
         let mut out = [0u8; 2];
         out[0] = x.calculate_leading_code();
         let c1: u32 = 0x80 | (past_five_char_to_byte8(c) & 0x3F);
         out[1] = assume_byte(c1);
-        Self::PastFive(out)
+        Self::Raw(out)
       },
     }
   }
@@ -221,7 +221,7 @@ impl EncodedChar {
         d = (d << 6) + (c5 as u32) - ((0x08 << 24) + 0x80);
         unsafe { SingleChar::from_u32(d) }
       },
-      Self::PastFive([c1, c2]) => {
+      Self::Raw([c1, c2]) => {
         debug_assert!(c1 < 0xC2);
         let d: u32 = ((c1 as u32) << 6) + (c2 as u32) - ((0xC0 << 6) + 0x80);
         unsafe { SingleChar::from_u32(d + 0x3FFF80) }
@@ -269,14 +269,14 @@ impl EncodedChar {
       2 => {
         let (d, rest) = rest.split_first().unwrap();
         let d = *d;
-        let w: i32 = (((d as i32) & 0xC0) << 2) + (c as i32);
+        let w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
         if w > 0x2DF || w < 0x2C0 {
           #[cfg(test)]
           dbg!(w);
           return Err(DecodeError::InvalidWValue(w));
         }
         let ret = if w < 0x2C2 {
-          Self::PastFive([c, d])
+          Self::Raw([c, d])
         } else {
           Self::Two([c, d])
         };
@@ -286,9 +286,9 @@ impl EncodedChar {
         let ([d, e], rest) = rest.split_first_chunk().unwrap();
         let d = *d;
         let e = *e;
-        let mut w: i32 = (((d as i32) & 0xC0) << 2) + (c as i32);
-        w += ((e as i32) & 0xC0) << 4;
-        let w1: i32 = w | (((d as i32) & 0x20) >> 2);
+        let mut w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
+        w += ((e as u32) & 0xC0) << 4;
+        let w1: u32 = w | (((d as u32) & 0x20) >> 2);
         if w1 < 0xAE1 || w1 > 0xAEF {
           return Err(DecodeError::InvalidW1Value(w1));
         }
@@ -299,10 +299,10 @@ impl EncodedChar {
         let d = *d;
         let e = *e;
         let f = *f;
-        let mut w: i32 = (((d as i32) & 0xC0) << 2) + (c as i32);
-        w += ((e as i32) & 0xC0) << 4;
-        w += ((f as i32) & 0xC0) << 6;
-        let w2: i32 = w | (((d as i32) & 0x30) >> 3);
+        let mut w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
+        w += ((e as u32) & 0xC0) << 4;
+        w += ((f as u32) & 0xC0) << 6;
+        let w2: u32 = w | (((d as u32) & 0x30) >> 3);
         if w2 < 0x2AF1 || w2 > 0x2AF7 {
           return Err(DecodeError::InvalidW2Value(w2));
         }
@@ -314,11 +314,11 @@ impl EncodedChar {
         let e = *e;
         let f = *f;
         let g = *g;
-        let mut w: i32 = (((d as i32) & 0xC0) << 2) + (c as i32);
-        w += ((e as i32) & 0xC0) << 4;
-        w += ((f as i32) & 0xC0) << 6;
-        let lw: i64 = (w as i64) + (((g as i64) & 0xC0) << 8);
-        let w3: i64 = (lw << 24) + ((d as i64) << 16) + ((d as i64) << 8) + (f as i64);
+        let mut w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
+        w += ((e as u32) & 0xC0) << 4;
+        w += ((f as u32) & 0xC0) << 6;
+        let lw: u64 = (w as u64) + (((g as u64) & 0xC0) << 8);
+        let w3: u64 = (lw << 24) + ((d as u64) << 16) + ((d as u64) << 8) + (f as u64);
         if w3 < 0xAAF8888080 || w3 > 0xAAF88FBFBD {
           return Err(DecodeError::InvalidW3Value(w3));
         }
@@ -332,7 +332,7 @@ impl EncodedChar {
   pub const fn byte_len(&self) -> usize {
     match self {
       &Self::One(_) => 1,
-      &Self::Two(_) | &Self::PastFive(_) => 2,
+      &Self::Two(_) | &Self::Raw(_) => 2,
       &Self::Three(_) => 3,
       &Self::Four(_) => 4,
       &Self::Five(_) => 5,
@@ -368,7 +368,7 @@ impl EncodedChar {
         head.write(*data);
         rest
       },
-      Self::PastFive(data) => {
+      Self::Raw(data) => {
         let (head, rest): (&mut [MaybeUninit<u8>; 2], _) = x.split_first_chunk_mut().unwrap();
         let head: &mut MaybeUninit<[u8; 2]> = transpose_uninit_array(head);
         head.write(*data);
@@ -403,8 +403,7 @@ enum ValueClass {
   Three,
   Four,
   Five,
-  /// TODO: This becomes 2 for some reason.
-  PastFive,
+  Raw,
 }
 
 impl SingleChar {
@@ -477,7 +476,7 @@ impl SingleChar {
     if c > Self::MAX_5_BYTE_CHAR {
       /* FIXME: why do this??? this is from CHAR_BYTES() in src/character.h, but
        * it's not clear why? */
-      return ValueClass::PastFive;
+      return ValueClass::Raw;
     }
     if c > Self::MAX_4_BYTE_CHAR {
       return ValueClass::Five;
@@ -498,15 +497,12 @@ impl SingleChar {
       ValueClass::Three => 0xE0 | (c >> 12),
       ValueClass::Four => 0xF0 | (c >> 18),
       ValueClass::Five => 0xF8,
-      ValueClass::PastFive => 0xC0 | ((past_five_char_to_byte8(c) >> 6) & 0x01),
+      ValueClass::Raw => 0xC0 | ((past_five_char_to_byte8(c) >> 6) & 0x01),
     };
     assume_byte(ret)
   }
 
   const MAX_MULTIBYTE_LENGTH: usize = 5;
-
-  /* const MIN_MULTIBYTE_LEADING_CODE: u32 = 0xC0; */
-  /* const MAX_MULTIBYTE_LEADING_CODE: u32 = 0xF8; */
 
   pub const NULL: Self = Self(0);
   pub const A: Self = Self::from_ascii(unsafe { ascii::Char::from_u8_unchecked(b'A') });
