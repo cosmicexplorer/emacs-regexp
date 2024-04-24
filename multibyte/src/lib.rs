@@ -643,4 +643,12 @@ mod test {
     let e = EncodedChar::from_uniform(c);
     assert_eq!(e.into_uniform(), c);
   }
+
+  proptest! {
+    #[test]
+    fn single_char_roundtrip(c in any::<SingleChar>()) {
+      let e = EncodedChar::from_uniform(c);
+      prop_assert_eq!(e.into_uniform(), c);
+    }
+  }
 }
