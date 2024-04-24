@@ -1,4 +1,4 @@
-/* Description: ???
+/* Description: AST generation from emacs regexp pattern strings.
 
 Copyright (C) 2024 Danny McClanahan <dmcC2@hypnicjerk.ai>
 SPDX-License-Identifier: GPL-3.0-or-later
@@ -30,7 +30,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
-//! ???
+//! AST generation from emacs regexp pattern strings.
 
 extern crate alloc;
 

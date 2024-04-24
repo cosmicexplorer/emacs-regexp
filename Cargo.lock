@@ -53,6 +53,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "emacs-multibyte"
+version = "0.0.0"
+
+[[package]]
 name = "emacs-regexp"
 version = "0.0.0"
 dependencies = [

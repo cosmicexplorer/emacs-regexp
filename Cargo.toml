@@ -4,12 +4,14 @@ members                 = [
     "syntax",
     "ffi",
     "automata",
+    "multibyte",
 ]
 default-members         = [
     ".",
     "syntax",
     "ffi",
     # "automata",
+    "multibyte",
 ]
 resolver                = "2"
 
@@ -23,6 +25,7 @@ emacs-regexp            = { path = "./" }
 emacs-regexp-automata   = { path = "./automata" }
 emacs-regexp-syntax     = { path = "./syntax" }
 emacs-regexp-ffi        = { path = "./ffi" }
+emacs-multibyte         = { path = "./multibyte" }
 
 cfg-if                  = "1"
 displaydoc              = { version = "0.2.4", default-features = false }
