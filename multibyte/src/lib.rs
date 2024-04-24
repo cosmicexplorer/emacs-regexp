@@ -407,8 +407,17 @@ enum ValueClass {
 }
 
 impl SingleChar {
-  pub const BITS: u8 = 22;
-  pub const MAX_CHAR: u32 = 0x3FFFFF;
+  #[allow(dead_code)]
+  const BITS: u8 = 22;
+  const MAX_CHAR: u32 = 0x3FFFFF;
+
+  #[inline(always)]
+  pub const fn from_byte(x: u8) -> Self {
+    match ascii::Char::from_u8(x) {
+      Some(c) => Self::from_ascii(c),
+      None => unsafe { Self::from_u32((x as u32) + 0x3FFF00) },
+    }
+  }
 
   #[inline(always)]
   pub const fn from_ascii(c: ascii::Char) -> Self { Self(c.to_u8() as u32) }
@@ -680,6 +689,22 @@ mod test {
     let p2 = PackedString::from_str(s);
     assert_eq!(p, p2);
     assert_eq!(p2.iter_encoded_chars().count(), 4);
+  }
+
+  #[test]
+  fn mixed_length_chars() {
+    let s = "aࠀßs\0d";
+    assert_eq!(s.as_bytes().len(), 9);
+    let (_, n) = PackedString::try_from_bytes(s.as_bytes()).unwrap();
+    assert_eq!(n, s.chars().count());
+  }
+
+  #[test]
+  fn raw_bytes() {
+    let c = SingleChar::from_byte(128);
+    assert_eq!(4194176, c.as_u32());
+    let c = SingleChar::from_byte(u8::MAX);
+    assert_eq!(SingleChar::MAX_CHAR, c.as_u32());
   }
 
   prop_compose! {
