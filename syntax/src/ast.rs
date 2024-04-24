@@ -1149,38 +1149,51 @@ pub mod expr {
           assert!(concs_len >= 2);
           Union::new([
             (any::<PostfixOp>(), inner.clone())
-              .prop_map(|(op, inner)| Self::Postfix { inner, op })
+              .prop_filter_map(
+                "a postfix op may not be applied to any aggregate expression without wrapping with e.g. a non-capturing group",
+                |(op, inner)| match inner.as_ref() {
+                  &Self::Alternation { .. }
+                  | &Self::Concatenation { .. }
+                  | &Self::Postfix { .. } => None,
+                  _ => Some(Self::Postfix { inner, op }),
+                }
+              )
               .boxed(),
             (any::<GroupKind>(), inner.clone())
               .prop_map(|(kind, inner)| Self::Group { kind, inner })
               .boxed(),
             (vec(inner.clone(), 2..=alts_len), alloc.clone())
-              .prop_map(|(cases, alloc)| {
-                let mut v = Vec::with_capacity_in(cases.len(), alloc);
-                v.extend_from_slice(&cases[..]);
-                Self::Alternation { cases: v }
-              })
+              .prop_filter_map(
+                "an alternation cannot hand down directly to another alternation without wrapping in e.g. a non-capturing group",
+                |(cases, alloc)| {
+                  if cases.iter().any(|sub_expr| match sub_expr.as_ref() {
+                    &Self::Alternation { .. } => true,
+                    _ => false,
+                  }) {
+                    return None;
+                  }
+                  let mut v = Vec::with_capacity_in(cases.len(), alloc);
+                  v.extend_from_slice(&cases[..]);
+                  Some(Self::Alternation { cases: v })
+                })
               .boxed(),
             (vec(inner, 2..=concs_len), alloc.clone())
-              .prop_map(|(components, alloc)| {
-                let mut v = Vec::with_capacity_in(components.len(), alloc);
-                v.extend_from_slice(&components[..]);
-                Self::Concatenation { components: v }
-              })
+              .prop_filter_map(
+                "a concatenation cannot hand down directly to an alternation or other concatenation without wrapping in e.g. a non-capturing group",
+                |(components, alloc)| {
+                  if components.iter().any(|sub_expr| match sub_expr.as_ref() {
+                    &Self::Alternation { .. } | &Self::Concatenation { .. } => true,
+                    _ => false,
+                  }) {
+                    return None;
+                  }
+                  let mut v = Vec::with_capacity_in(components.len(), alloc);
+                  v.extend_from_slice(&components[..]);
+                  Some(Self::Concatenation { components: v })
+                })
               .boxed(),
           ])
         })
-        .prop_filter(
-          "a concatenation cannot hand down directly to an alternation without wrapping in e.g. a non-capturing group",
-          |expr| match expr {
-            Expr::Concatenation { components } =>
-              !components.iter().any(|sub_expr| match sub_expr.as_ref() {
-                &Expr::Alternation { .. } => true,
-                _ => false,
-              }),
-            _ => true
-          }
-        )
         .boxed()
     }
   }
