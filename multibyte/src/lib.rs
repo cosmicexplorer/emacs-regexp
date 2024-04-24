@@ -31,6 +31,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(new_uninit)]
 #![feature(slice_ptr_get)]
 #![feature(layout_for_ptr)]
+#![feature(slice_split_at_unchecked)]
+#![feature(maybe_uninit_fill)]
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
@@ -775,18 +777,10 @@ mod test {
 
     #[test]
     fn utf8_string_roundtrip(chars in gen_utf8_chars(50)) {
-      let complete_len: usize = chars.iter().map(|c| c.len_utf8()).sum();
-      let mut d: Box<[u8]> = unsafe { Box::new_zeroed_slice(complete_len).assume_init() };
-      {
-        let mut d_ret: &mut [u8] = d.as_mut();
-        for c in chars.iter() {
-          let cur_written = c.encode_utf8(d_ret).as_bytes().len();
-          d_ret = &mut d_ret[cur_written..];
-        }
-        debug_assert!(d_ret.is_empty());
-      };
-      let d: Box<str> = unsafe { mem::transmute(d) };
-      let d: std::string::String = d.into();
+      let d: std::string::String = crate::util::string::coalesce_utf8_chars(
+        chars.iter().copied(),
+        Global,
+      ).into();
 
       let (p, n) = PackedString::try_from_bytes(d.as_bytes()).unwrap();
       prop_assert_eq!(n, chars.len());
@@ -798,6 +792,36 @@ mod test {
 }
 
 pub mod util {
+  pub mod string {
+    use core::{alloc::Allocator, mem::MaybeUninit};
+
+    use crate::alloc_types::*;
+
+    #[inline]
+    pub fn coalesce_utf8_chars<A: Allocator>(
+      chars: impl Iterator<Item=char>,
+      alloc: A,
+    ) -> Box<str, A> {
+      /* TODO: smallvec? */
+      let mut buf: Vec<u8, A> = Vec::new_in(alloc);
+      for c in chars {
+        let mut remaining = buf.spare_capacity_mut();
+        if remaining.len() < c.len_utf8() {
+          buf.reserve(c.len_utf8());
+          remaining = buf.spare_capacity_mut();
+          debug_assert!(remaining.len() >= c.len_utf8());
+        }
+        let (target, _) = unsafe { remaining.split_at_mut_unchecked(c.len_utf8()) };
+        let ret = c.encode_utf8(MaybeUninit::fill(target, 0u8));
+        debug_assert_eq!(ret.as_bytes().len(), c.len_utf8());
+        unsafe {
+          buf.set_len(buf.len() + c.len_utf8());
+        }
+      }
+      unsafe { super::boxing::box_into_string(buf.into_boxed_slice()) }
+    }
+  }
+
   pub mod boxing {
     use core::{
       alloc::{Allocator, Layout},
