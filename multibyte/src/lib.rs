@@ -100,10 +100,10 @@ const fn transpose_uninit_array<T, const N: usize>(
 pub enum DecodeError {
   Empty,
   NotEnoughSpace { required: u8, available: u8 },
-  InvalidWValue(u32),
-  InvalidW1Value(u32),
-  InvalidW2Value(u32),
-  InvalidW3Value(u64),
+  InvalidWValue(i32),
+  InvalidW1Value(i32),
+  InvalidW2Value(i32),
+  InvalidW3Value(i64),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -267,8 +267,10 @@ impl EncodedChar {
       2 => {
         let (d, rest) = rest.split_first().unwrap();
         let d = *d;
-        let w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
+        let w: i32 = (((d as i32) & 0xC0) << 2) + (c as i32);
         if w > 0x2DF || w < 0x2C0 {
+          #[cfg(test)]
+          dbg!(w);
           return Err(DecodeError::InvalidWValue(w));
         }
         let ret = if w < 0x2C2 {
@@ -282,12 +284,9 @@ impl EncodedChar {
         let ([d, e], rest) = rest.split_first_chunk().unwrap();
         let d = *d;
         let e = *e;
-        let mut w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
-        if w > 0x2DF || w < 0x2C0 {
-          return Err(DecodeError::InvalidWValue(w));
-        }
-        w += ((e as u32) & 0xC0) << 4;
-        let w1: u32 = w | (((d as u32) & 0x20) >> 2);
+        let mut w: i32 = (((d as i32) & 0xC0) << 2) + (c as i32);
+        w += ((e as i32) & 0xC0) << 4;
+        let w1: i32 = w | (((d as i32) & 0x20) >> 2);
         if w1 < 0xAE1 || w1 > 0xAEF {
           return Err(DecodeError::InvalidW1Value(w1));
         }
@@ -298,17 +297,10 @@ impl EncodedChar {
         let d = *d;
         let e = *e;
         let f = *f;
-        let mut w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
-        if w > 0x2DF || w < 0x2C0 {
-          return Err(DecodeError::InvalidWValue(w));
-        }
-        w += ((e as u32) & 0xC0) << 4;
-        let w1: u32 = w | (((d as u32) & 0x20) >> 2);
-        if w1 < 0xAE1 || w1 > 0xAEF {
-          return Err(DecodeError::InvalidW1Value(w1));
-        }
-        w += ((f as u32) & 0xC0) << 6;
-        let w2: u32 = w | (((d as u32) & 0x30) >> 3);
+        let mut w: i32 = (((d as i32) & 0xC0) << 2) + (c as i32);
+        w += ((e as i32) & 0xC0) << 4;
+        w += ((f as i32) & 0xC0) << 6;
+        let w2: i32 = w | (((d as i32) & 0x30) >> 3);
         if w2 < 0x2AF1 || w2 > 0x2AF7 {
           return Err(DecodeError::InvalidW2Value(w2));
         }
@@ -320,22 +312,11 @@ impl EncodedChar {
         let e = *e;
         let f = *f;
         let g = *g;
-        let mut w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
-        if w > 0x2DF || w < 0x2C0 {
-          return Err(DecodeError::InvalidWValue(w));
-        }
-        w += ((e as u32) & 0xC0) << 4;
-        let w1: u32 = w | (((d as u32) & 0x20) >> 2);
-        if w1 < 0xAE1 || w1 > 0xAEF {
-          return Err(DecodeError::InvalidW1Value(w1));
-        }
-        w += ((f as u32) & 0xC0) << 6;
-        let w2: u32 = w | (((d as u32) & 0x30) >> 3);
-        if w2 < 0x2AF1 || w2 > 0x2AF7 {
-          return Err(DecodeError::InvalidW2Value(w2));
-        }
-        let lw: u64 = (w as u64) + (((g as u64) & 0xC0) << 8);
-        let w3: u64 = (lw << 24) + ((d as u64) << 16) + ((d as u64) << 8) + (f as u64);
+        let mut w: i32 = (((d as i32) & 0xC0) << 2) + (c as i32);
+        w += ((e as i32) & 0xC0) << 4;
+        w += ((f as i32) & 0xC0) << 6;
+        let lw: i64 = (w as i64) + (((g as i64) & 0xC0) << 8);
+        let w3: i64 = (lw << 24) + ((d as i64) << 16) + ((d as i64) << 8) + (f as i64);
         if w3 < 0xAAF8888080 || w3 > 0xAAF88FBFBD {
           return Err(DecodeError::InvalidW3Value(w3));
         }
@@ -595,7 +576,7 @@ where A: Allocator+Clone+Default+fmt::Debug+'static
   fn arbitrary_with(args: (usize, A)) -> Self::Strategy {
     let (max_len, alloc) = args;
     (vec(any::<SingleChar>(), 0..=max_len), Just(alloc))
-      .prop_map(|(packed_chars, alloc)| Self::coalesce_chars(packed_chars.into_iter(), alloc))
+      .prop_map(|(chars, alloc)| Self::coalesce_chars(chars.into_iter(), alloc))
       .boxed()
   }
 }
@@ -628,13 +609,16 @@ where A: Allocator
   }
 
   #[inline(always)]
-  pub const fn as_str(&self) -> PackedString {
+  pub const fn as_packed_str(&self) -> PackedString {
     unsafe { PackedString::from_bytes(self.0.as_ref()) }
   }
 }
 
 #[cfg(test)]
 mod test {
+  use core::str;
+  use std::alloc::Global;
+
   use super::*;
 
   #[test]
@@ -644,11 +628,62 @@ mod test {
     assert_eq!(e.into_uniform(), c);
   }
 
+  #[test]
+  fn ascii_string() {
+    let s = b"asdf";
+    let (p, n) = PackedString::try_from_bytes(s).unwrap();
+    assert_eq!(n, 4);
+    let p2 = PackedString::from_str(str::from_utf8(s).unwrap());
+    assert_eq!(p, p2);
+    assert_eq!(p2.iter_encoded_chars().count(), 4);
+  }
+
+  #[test]
+  fn utf8_string() {
+    let s = "aßdf";
+    let (p, n) = PackedString::try_from_bytes(s.as_bytes()).unwrap();
+    assert_eq!(n, 4);
+    assert!(n < s.as_bytes().len());
+    let p2 = PackedString::from_str(s);
+    assert_eq!(p, p2);
+    assert_eq!(p2.iter_encoded_chars().count(), 4);
+  }
+
+  #[test]
+  fn three_byte_char() {
+    let s = "aࠀdf";
+    let (p, n) = PackedString::try_from_bytes(s.as_bytes()).unwrap();
+    assert_eq!(n, 4);
+    assert!(n < s.as_bytes().len());
+    let p2 = PackedString::from_str(s);
+    assert_eq!(p, p2);
+    assert_eq!(p2.iter_encoded_chars().count(), 4);
+  }
+
+  prop_compose! {
+    fn gen_multibyte_chars(max_len: usize)
+      (
+        v in prop::collection::vec(
+          any::<SingleChar>(),
+          0..=max_len
+        )
+      ) -> Vec<SingleChar> {
+      v
+    }
+  }
+
   proptest! {
     #[test]
     fn single_char_roundtrip(c in any::<SingleChar>()) {
       let e = EncodedChar::from_uniform(c);
       prop_assert_eq!(e.into_uniform(), c);
+    }
+
+    #[test]
+    fn string_roundtrip(chars in gen_multibyte_chars(50)) {
+      let s = OwnedString::coalesce_chars(chars.iter().copied(), Global);
+      let new_chars: Vec<_> = s.as_packed_str().iter_uniform_chars().collect();
+      prop_assert_eq!(chars, new_chars);
     }
   }
 }
