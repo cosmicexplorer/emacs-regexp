@@ -66,6 +66,34 @@ where
   Alternator,
 }
 
+impl<L, A> fmt::Debug for ContextComponent<L, A>
+where
+  L: LiteralEncoding,
+  L::Single: fmt::Debug,
+  A: Allocator,
+{
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Self::SingleLiteral(sl) => write!(f, "ContextComponent::SingleLiteral({:?})", sl),
+      Self::EscapedLiteral(el) => write!(f, "ContextComponent::EscapedLiteral({:?})", el),
+      Self::Backref(br) => write!(f, "ContextComponent::Backref({:?})", br),
+      Self::Anchor(a) => write!(f, "ContextComponent::Anchor({:?})", a),
+      Self::CharSelector(scs) => write!(f, "ContextComponent::CharSelector({:?})", scs),
+      Self::Postfix { expr, op } => write!(
+        f,
+        "ContextComponent::Postfix {{ expr: {:?}, op: {:?} }}",
+        expr, op
+      ),
+      Self::Group { expr, kind } => write!(
+        f,
+        "ContextComponent::Group {{ expr: {:?}, kind: {:?} }}",
+        expr, kind
+      ),
+      Self::Alternator => write!(f, "ContextComponent::Alternator"),
+    }
+  }
+}
+
 fn apply_postfix<L, A>(
   component: ContextComponent<L, A>,
   op: PostfixOp,
@@ -344,6 +372,8 @@ where
             group_context.push((ctx_kind, components));
             continue;
           }
+          #[cfg(test)]
+          dbg!(class_chars);
           return Err(ParseError {
             kind: ParseErrorKind::InvalidCharClass,
             at: i,
@@ -479,11 +509,12 @@ where
         continue;
       }
       if character == L::CLOSE_SQUARE_BRACE {
-        currently_within_char_class = Some(Vec::new_in(alloc.clone()));
-        currently_within_char_alternative = Some(CharacterAlternative {
-          complemented,
-          elements,
-        });
+        let new_component =
+          ContextComponent::CharSelector(SingleCharSelector::Alt(CharacterAlternative {
+            complemented,
+            elements,
+          }));
+        components.push(new_component);
         group_context.push((ctx_kind, components));
         continue;
       }
@@ -915,6 +946,8 @@ where
       at: out_i,
     });
   }
+  #[cfg(test)]
+  dbg!(&top_level_components);
 
   if previous_was_open_group {
     return Err(ParseError {
@@ -928,6 +961,8 @@ where
       at: out_i,
     });
   }
+  #[cfg(test)]
+  dbg!(&top_level_components);
 
   if let Some(_) = currently_within_char_alternative {
     return Err(ParseError {
@@ -935,6 +970,8 @@ where
       at: out_i,
     });
   }
+  #[cfg(test)]
+  dbg!(&top_level_components);
 
   if previous_was_final_class_colon {
     return Err(ParseError {
@@ -1148,13 +1185,33 @@ mod test {
   #[test]
   fn parse_char_alt() {
     let parsed = parse::<UnicodeEncoding, _>("a[a]", Global).unwrap();
-    /* assert_eq!(parsed, Expr::Postfix { */
-    /* inner: Box::new(Expr::SingleLiteral(SingleLiteral(b'a'))), */
-    /* op: PostfixOp::Repeat(RepeatOperator::Exact(ExactRepeatOperator { */
-    /* times: RepeatNumeral(2) */
-    /* })), */
-    /* }); */
+    assert_eq!(parsed, Expr::Concatenation {
+      components: vec![
+        Box::new(Expr::SingleLiteral(SingleLiteral('a'))),
+        Box::new(Expr::CharSelector(SingleCharSelector::Alt(
+          CharacterAlternative {
+            complemented: ComplementBehavior::Uncomplemented,
+            elements: vec![CharAltComponent::SingleLiteral(SingleLiteral('a'))]
+          }
+        )))
+      ]
+    });
     assert_eq!(&format!("{}", parsed), "a[a]");
+
+    let parsed = parse::<UnicodeEncoding, _>("a[a]a", Global).unwrap();
+    assert_eq!(parsed, Expr::Concatenation {
+      components: vec![
+        Box::new(Expr::SingleLiteral(SingleLiteral('a'))),
+        Box::new(Expr::CharSelector(SingleCharSelector::Alt(
+          CharacterAlternative {
+            complemented: ComplementBehavior::Uncomplemented,
+            elements: vec![CharAltComponent::SingleLiteral(SingleLiteral('a'))]
+          }
+        ))),
+        Box::new(Expr::SingleLiteral(SingleLiteral('a'))),
+      ]
+    });
+    assert_eq!(&format!("{}", parsed), "a[a]a");
   }
 
   prop_compose! {

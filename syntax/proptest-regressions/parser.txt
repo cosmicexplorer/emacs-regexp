@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc a3c83e2243035b8c8557f9dd244d3703da2bf4d7d17bf9a2800b683123816154 # shrinks to e = Expr::Group { kind: Basic, inner: Expr::CharSelector(SingleCharSelector::Alt(CharacterAlternative { complemented: Uncomplemented, elements: [] })) }
+cc 0893cf864103e2949ad718dc7c792d2e5dc24407552a5cc1092574fa352fb798 # shrinks to e = Expr::Alternation { cases: [] }
