@@ -1170,6 +1170,17 @@ pub mod expr {
               .boxed(),
           ])
         })
+        .prop_filter(
+          "a concatenation cannot hand down directly to an alternation without wrapping in e.g. a non-capturing group",
+          |expr| match expr {
+            Expr::Concatenation { components } =>
+              !components.iter().any(|sub_expr| match sub_expr.as_ref() {
+                &Expr::Alternation { .. } => true,
+                _ => false,
+              }),
+            _ => true
+          }
+        )
         .boxed()
     }
   }
