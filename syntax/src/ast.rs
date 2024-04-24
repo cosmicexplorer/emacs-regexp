@@ -186,11 +186,7 @@ pub mod character_alternatives {
   use core::{alloc::Allocator, fmt, hash};
 
   #[cfg(test)]
-  use proptest::{
-    collection::vec,
-    prelude::*,
-    strategy::{BoxedStrategy, Map, Union},
-  };
+  use proptest::{collection::vec, prelude::*, strategy::Union};
 
   use super::literals::single::SingleLiteral;
   use crate::{alloc_types::*, encoding::LiteralEncoding};
@@ -523,9 +519,6 @@ pub mod character_alternatives {
 pub mod postfix_operators {
   use core::fmt;
 
-  #[cfg(test)]
-  use proptest::prelude::*;
-
   #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
   pub enum GreedyBehavior {
@@ -749,7 +742,7 @@ pub mod groups {
   use core::{ascii, fmt, num::NonZeroUsize};
 
   #[cfg(test)]
-  use proptest::{prelude::*, strategy::BoxedStrategy};
+  use proptest::prelude::*;
 
   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
   #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
@@ -810,7 +803,7 @@ pub mod char_properties {
   use core::{ascii, fmt};
 
   #[cfg(test)]
-  use proptest::{prelude::*, strategy::BoxedStrategy};
+  use proptest::prelude::*;
 
   use super::Negation;
 
@@ -930,11 +923,7 @@ pub mod expr {
   use core::{alloc::Allocator, fmt};
 
   #[cfg(test)]
-  use proptest::{
-    collection::vec,
-    prelude::*,
-    strategy::{BoxedStrategy, Union},
-  };
+  use proptest::{collection::vec, prelude::*, strategy::Union};
 
   use super::{
     anchors::Anchor,

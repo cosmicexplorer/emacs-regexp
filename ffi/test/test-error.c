@@ -23,7 +23,7 @@ int main() {
 
   REX_CompileResult r;
   assert(rex_compile(&p, &c, &r) == REX_REGEXP_ERROR_PARSE_ERROR);
-  assert(strcmp(r.error, "ParseError { kind: UnmatchedCloseParen, at: 3 }") ==
+  assert(strcmp(r.error, "ParseError { kind: UnmatchedCloseParen, at: 4 }") ==
          0);
   c.free(c.ctx, r.error);
 }

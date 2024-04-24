@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Parsers for regexp patterns.
 
-use core::{alloc::Allocator, fmt, mem, num::NonZeroUsize, str};
+use core::{alloc::Allocator, fmt, mem, num::NonZeroUsize};
 
 use displaydoc::Display;
 use thiserror::Error;
@@ -42,7 +42,7 @@ use crate::{
     },
     Negation,
   },
-  encoding::{ByteEncoding, LiteralEncoding, UnicodeEncoding},
+  encoding::LiteralEncoding,
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1083,6 +1083,7 @@ mod test {
   use proptest::prelude::*;
 
   use super::*;
+  use crate::encoding::{ByteEncoding, UnicodeEncoding};
 
   #[test]
   fn parse_single_lit() {
@@ -1215,7 +1216,7 @@ mod test {
   }
 
   prop_compose! {
-    fn gen_expr()
+    fn gen_expr_utf8()
       (
         e in prop::arbitrary::arbitrary_with::<
           Expr<UnicodeEncoding, Global>,
@@ -1228,8 +1229,10 @@ mod test {
   }
 
   proptest! {
+    /* TODO: add multibyte and "binary" versions of this once we figure out good semantics for
+     * those! */
     #[test]
-    fn parse_roundtrip(e in gen_expr()) {
+    fn parse_utf8_roundtrip(e in gen_expr_utf8()) {
       let formatted = format!("{}", e);
       let parsed = parse::<UnicodeEncoding, Global>(&formatted, Global);
       prop_assert!(parsed.is_ok());
