@@ -22,11 +22,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![doc(test(attr(deny(warnings))))]
 #![feature(allocator_api)]
 #![feature(const_trait_impl)]
-#![feature(effects)]
-#![feature(ascii_char)]
 #![feature(const_mut_refs)]
 #![feature(const_maybe_uninit_write)]
 #![feature(const_try)]
+#![feature(const_char_from_u32_unchecked)]
+#![feature(effects)]
+#![feature(ascii_char)]
+#![feature(new_uninit)]
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
@@ -413,6 +415,30 @@ impl SingleChar {
   pub const fn from_ascii(c: ascii::Char) -> Self { Self(c.to_u8() as u32) }
 
   #[inline(always)]
+  pub const fn try_as_ascii(&self) -> Option<ascii::Char> {
+    match self.calculate_value_class() {
+      ValueClass::One => {
+        let c = assume_byte(self.as_u32());
+        Some(unsafe { ascii::Char::from_u8_unchecked(c) })
+      },
+      _ => None,
+    }
+  }
+
+  #[inline(always)]
+  pub const fn from_unicode(c: char) -> Self { unsafe { Self(mem::transmute(c)) } }
+
+  #[inline(always)]
+  pub const fn try_as_unicode(&self) -> Option<char> {
+    let c = self.as_u32();
+    if c > Self::MAX_UNICODE_CHAR {
+      None
+    } else {
+      Some(unsafe { char::from_u32_unchecked(c) })
+    }
+  }
+
+  #[inline(always)]
   pub const unsafe fn from_u32(x: u32) -> Self { Self(x) }
 
   #[inline(always)]
@@ -430,7 +456,7 @@ impl SingleChar {
     *c
   }
 
-  /* const MAX_UNICODE_CHAR: u32 = 0x10FFFF; */
+  const MAX_UNICODE_CHAR: u32 = 0x10FFFF;
 
   const MAX_1_BYTE_CHAR: u32 = 0x7F;
   const MAX_2_BYTE_CHAR: u32 = 0x7FF;
@@ -668,8 +694,35 @@ mod test {
           0..=max_len
         )
       ) -> Vec<SingleChar> {
-      v
+        v
+      }
+  }
+  prop_compose! {
+    fn gen_utf8_chars(max_len: usize)
+      (
+        v in prop::collection::vec(
+          any::<char>(),
+          0..=max_len
+        )
+      ) -> Vec<char> {
+        v
+      }
+  }
+  prop_compose! {
+    fn gen_single_ascii_char()(c in 0u8..=127) -> ascii::Char {
+      ascii::Char::from_u8(c).unwrap()
     }
+  }
+  prop_compose! {
+    fn gen_ascii_chars(max_len: usize)
+      (
+        v in prop::collection::vec(
+          gen_single_ascii_char(),
+          0..=max_len
+        )
+      ) -> Vec<ascii::Char> {
+        v
+      }
   }
 
   proptest! {
@@ -680,10 +733,44 @@ mod test {
     }
 
     #[test]
-    fn string_roundtrip(chars in gen_multibyte_chars(50)) {
+    fn multibyte_string_roundtrip(chars in gen_multibyte_chars(50)) {
       let s = OwnedString::coalesce_chars(chars.iter().copied(), Global);
       let new_chars: Vec<_> = s.as_packed_str().iter_uniform_chars().collect();
       prop_assert_eq!(chars, new_chars);
+    }
+
+    #[test]
+    fn ascii_string_roundtrip(chars in gen_ascii_chars(50)) {
+      let bytes: &[u8] = unsafe { mem::transmute(&chars[..]) };
+      let (p, n) = PackedString::try_from_bytes(bytes).unwrap();
+      prop_assert_eq!(n, chars.len());
+      prop_assert_eq!(n, bytes.len());
+      let s = str::from_utf8(bytes).unwrap();
+      prop_assert_eq!(n, s.len());
+      let p2 = PackedString::from_str(s);
+      prop_assert_eq!(p, p2);
+    }
+
+    #[test]
+    fn utf8_string_roundtrip(chars in gen_utf8_chars(50)) {
+      let complete_len: usize = chars.iter().map(|c| c.len_utf8()).sum();
+      let mut d: Box<[u8]> = unsafe { Box::new_zeroed_slice(complete_len).assume_init() };
+      {
+        let mut d_ret: &mut [u8] = d.as_mut();
+        for c in chars.iter() {
+          let cur_written = c.encode_utf8(d_ret).as_bytes().len();
+          d_ret = &mut d_ret[cur_written..];
+        }
+        debug_assert!(d_ret.is_empty());
+      };
+      let d: Box<str> = unsafe { mem::transmute(d) };
+      let d: std::string::String = d.into();
+
+      let (p, n) = PackedString::try_from_bytes(d.as_bytes()).unwrap();
+      prop_assert_eq!(n, chars.len());
+      prop_assert_eq!(n, d.chars().count());
+      let p2 = PackedString::from_str(&d);
+      prop_assert_eq!(p, p2);
     }
   }
 }
