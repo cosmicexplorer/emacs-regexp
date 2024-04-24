@@ -54,7 +54,6 @@ use core::{
   alloc::Allocator,
   ascii,
   mem::{self, MaybeUninit},
-  num::NonZeroUsize,
 };
 
 
@@ -178,7 +177,7 @@ impl EncodedChar {
       Self::One(c) => SingleChar::from_ascii(c),
       Self::Two([c1, c2]) => {
         debug_assert!(c1 >= 0xC2);
-        let mut d: u32 = ((c1 as u32) << 6) + (c2 as u32) - ((0xC0 << 6) + 0x80);
+        let d: u32 = ((c1 as u32) << 6) + (c2 as u32) - ((0xC0 << 6) + 0x80);
         unsafe { SingleChar::from_u32(d) }
       },
       Self::Three([c1, c2, c3]) => {
@@ -201,7 +200,7 @@ impl EncodedChar {
       },
       Self::PastFive([c1, c2]) => {
         debug_assert!(c1 < 0xC2);
-        let mut d: u32 = ((c1 as u32) << 6) + (c2 as u32) - ((0xC0 << 6) + 0x80);
+        let d: u32 = ((c1 as u32) << 6) + (c2 as u32) - ((0xC0 << 6) + 0x80);
         unsafe { SingleChar::from_u32(d + 0x3FFF80) }
       },
     }
@@ -404,20 +403,6 @@ pub enum ValueClass {
   PastFive,
 }
 
-impl ValueClass {
-  #[inline(always)]
-  pub const fn byte_width(&self) -> NonZeroUsize {
-    match self {
-      Self::One => SingleChar::NZ_1,
-      Self::Two => SingleChar::NZ_2,
-      Self::Three => SingleChar::NZ_3,
-      Self::Four => SingleChar::NZ_4,
-      Self::Five => SingleChar::NZ_5,
-      Self::PastFive => SingleChar::NZ_2,
-    }
-  }
-}
-
 impl SingleChar {
   pub const BITS: u8 = 22;
   pub const MAX_CHAR: u32 = 0x3FFFFF;
@@ -443,7 +428,7 @@ impl SingleChar {
     *c
   }
 
-  const MAX_UNICODE_CHAR: u32 = 0x10FFFF;
+  /* const MAX_UNICODE_CHAR: u32 = 0x10FFFF; */
 
   const MAX_1_BYTE_CHAR: u32 = 0x7F;
   const MAX_2_BYTE_CHAR: u32 = 0x7FF;
@@ -492,16 +477,11 @@ impl SingleChar {
 
   const MAX_MULTIBYTE_LENGTH: usize = 5;
 
-  const NZ_1: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(1) };
-  const NZ_2: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2) };
-  const NZ_3: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(3) };
-  const NZ_4: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(4) };
-  const NZ_5: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(5) };
-
-  const MIN_MULTIBYTE_LEADING_CODE: u32 = 0xC0;
-  const MAX_MULTIBYTE_LEADING_CODE: u32 = 0xF8;
+  /* const MIN_MULTIBYTE_LEADING_CODE: u32 = 0xC0; */
+  /* const MAX_MULTIBYTE_LEADING_CODE: u32 = 0xF8; */
 
   pub const NULL: Self = Self(0);
+  pub const A: Self = Self::from_ascii(unsafe { ascii::Char::from_u8_unchecked(b'A') });
 }
 static_assertions::const_assert_eq!(
   SingleChar::MAX_CHAR,
@@ -548,6 +528,11 @@ impl<'a> PackedString<'a> {
     }
     Ok((unsafe { Self::from_bytes(bytes) }, num_encoded_chars_seen))
   }
+
+  /// A utf-8-encoded string is always a valid multibyte string, so simply
+  /// accept it as it is.
+  #[inline(always)]
+  pub const fn from_str(s: &'a str) -> Self { Self(s.as_bytes()) }
 
   #[inline(always)]
   pub fn iter_encoded_chars(&self) -> impl Iterator<Item=EncodedChar>+'_ {
@@ -604,7 +589,9 @@ mod test {
   use super::*;
 
   #[test]
-  fn ok() {
-    assert!(true);
+  fn single_char() {
+    let c = SingleChar::A;
+    let e = EncodedChar::from_uniform(c);
+    assert_eq!(e.into_uniform(), c);
   }
 }
