@@ -812,8 +812,7 @@ pub mod util {
           debug_assert!(remaining.len() >= c.len_utf8());
         }
         let (target, _) = unsafe { remaining.split_at_mut_unchecked(c.len_utf8()) };
-        let ret = c.encode_utf8(MaybeUninit::fill(target, 0u8));
-        debug_assert_eq!(ret.as_bytes().len(), c.len_utf8());
+        let _ = c.encode_utf8(MaybeUninit::fill(target, 0u8));
         unsafe {
           buf.set_len(buf.len() + c.len_utf8());
         }

@@ -9,6 +9,7 @@ authors.workspace       = true
 
 [dependencies]
 cfg-if.workspace        = true
+smallvec.workspace      = true
 static_assertions.workspace = true
 
 [dev-dependencies]
