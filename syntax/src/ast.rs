@@ -605,7 +605,7 @@ pub mod postfix_operators {
       let Self { left, right } = self;
       match (left, right) {
         (None, None) => write!(f, "\\{{,\\}}"),
-        (Some(_), None) => unreachable!(),
+        (Some(left), None) => write!(f, "\\{{{},\\}}", left),
         (None, Some(right)) => write!(f, "\\{{,{}\\}}", right),
         (Some(left), Some(right)) => write!(f, "\\{{{},{}\\}}", left, right),
       }
