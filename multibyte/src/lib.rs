@@ -23,6 +23,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(allocator_api)]
 #![feature(const_trait_impl)]
 #![feature(effects)]
+#![feature(ascii_char)]
 #![feature(const_mut_refs)]
 #![feature(const_maybe_uninit_write)]
 #![cfg_attr(not(test), no_std)]
@@ -48,7 +49,7 @@ use alloc_types::*;
 #[cfg(not(test))]
 extern crate alloc;
 
-use core::{alloc::Allocator, mem::MaybeUninit, num::NonZeroUsize};
+use core::{alloc::Allocator, ascii, mem::MaybeUninit, num::NonZeroUsize};
 
 
 #[allow(dead_code)]
@@ -59,6 +60,124 @@ const fn max_value_for_bit_width_64(bits: u8) -> u64 { (1u64 << (bits as u64)) -
 #[repr(transparent)]
 pub struct SingleChar(u32);
 pub type Char = SingleChar;
+
+#[inline(always)]
+const fn assume_byte(x: u32) -> u8 {
+  debug_assert!(x <= u8::MAX as u32);
+  x as u8
+}
+
+#[inline(always)]
+const fn past_five_char_to_byte8(x: u32) -> u32 {
+  debug_assert!(x > SingleChar::MAX_5_BYTE_CHAR);
+  x - 0x3FFF00
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum EncodedChar {
+  One(ascii::Char),
+  Two([u8; 2]),
+  Three([u8; 3]),
+  Four([u8; 4]),
+  Five([u8; 5]),
+  PastFive([u8; 2]),
+}
+
+impl EncodedChar {
+  #[inline(always)]
+  pub const fn encode(x: SingleChar) -> Self {
+    let c = x.as_u32();
+
+    match x.calculate_value_class() {
+      ValueClass::One => {
+        debug_assert!(ascii::Char::from_u8(x.calculate_leading_code()).is_some());
+        Self::One(unsafe { ascii::Char::from_u8_unchecked(x.calculate_leading_code()) })
+      },
+      ValueClass::Two => {
+        let mut out = [0u8; 2];
+        out[0] = x.calculate_leading_code();
+        let c1: u32 = 0x80 | (c & 0x3F);
+        out[1] = assume_byte(c1);
+        Self::Two(out)
+      },
+      ValueClass::Three => {
+        let mut out = [0u8; 3];
+        out[0] = x.calculate_leading_code();
+        let c1: u32 = 0x80 | ((c >> 6) & 0x3F);
+        out[1] = assume_byte(c1);
+        let c2: u32 = 0x80 | (c & 0x3F);
+        out[2] = assume_byte(c2);
+        Self::Three(out)
+      },
+      ValueClass::Four => {
+        let mut out = [0u8; 4];
+        out[0] = x.calculate_leading_code();
+        let c1: u32 = 0x80 | ((c >> 12) & 0x3F);
+        out[1] = assume_byte(c1);
+        let c2: u32 = 0x80 | ((c >> 6) & 0x3F);
+        out[2] = assume_byte(c2);
+        let c3: u32 = 0x80 | (c & 0x3F);
+        out[3] = assume_byte(c3);
+        Self::Four(out)
+      },
+      ValueClass::Five => {
+        let mut out = [0u8; 5];
+        out[0] = x.calculate_leading_code();
+        let c1: u32 = 0x80 | ((c >> 18) & 0x0F);
+        out[1] = assume_byte(c1);
+        let c2: u32 = 0x80 | ((c >> 12) & 0x3F);
+        out[2] = assume_byte(c2);
+        let c3: u32 = 0x80 | ((c >> 6) & 0x3F);
+        out[3] = assume_byte(c3);
+        let c4: u32 = 0x80 | (c & 0x3F);
+        out[4] = assume_byte(c4);
+        Self::Five(out)
+      },
+      ValueClass::PastFive => {
+        let mut out = [0u8; 2];
+        out[0] = x.calculate_leading_code();
+        let c1: u32 = 0x80 | (past_five_char_to_byte8(c) & 0x3F);
+        out[1] = assume_byte(c1);
+        Self::PastFive(out)
+      },
+    }
+  }
+
+  #[inline(always)]
+  pub const fn decode(self) -> SingleChar {
+    match self {
+      Self::One(c) => SingleChar::from_ascii(c),
+      Self::Two([c1, c2]) => {
+        debug_assert!(c1 >= 0xC2);
+        let mut d: u32 = ((c1 as u32) << 6) + (c2 as u32) - ((0xC0 << 6) + 0x80);
+        unsafe { SingleChar::from_u32(d) }
+      },
+      Self::Three([c1, c2, c3]) => {
+        let mut d: u32 = ((c1 as u32) << 6) + (c2 as u32) - ((0xC0 << 6) + 0x80);
+        d = (d << 6) + (c3 as u32) - ((0x20 << 12) + 0x80);
+        unsafe { SingleChar::from_u32(d) }
+      },
+      Self::Four([c1, c2, c3, c4]) => {
+        let mut d: u32 = ((c1 as u32) << 6) + (c2 as u32) - ((0xC0 << 6) + 0x80);
+        d = (d << 6) + (c3 as u32) - ((0x20 << 12) + 0x80);
+        d = (d << 6) + (c4 as u32) - ((0x10 << 18) + 0x80);
+        unsafe { SingleChar::from_u32(d) }
+      },
+      Self::Five([c1, c2, c3, c4, c5]) => {
+        let mut d: u32 = ((c1 as u32) << 6) + (c2 as u32) - ((0xC0 << 6) + 0x80);
+        d = (d << 6) + (c3 as u32) - ((0x20 << 12) + 0x80);
+        d = (d << 6) + (c4 as u32) - ((0x10 << 18) + 0x80);
+        d = (d << 6) + (c5 as u32) - ((0x08 << 24) + 0x80);
+        unsafe { SingleChar::from_u32(d) }
+      },
+      Self::PastFive([c1, c2]) => {
+        debug_assert!(c1 < 0xC2);
+        let mut d: u32 = ((c1 as u32) << 6) + (c2 as u32) - ((0xC0 << 6) + 0x80);
+        unsafe { SingleChar::from_u32(d + 0x3FFF80) }
+      },
+    }
+  }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ValueClass {
@@ -88,6 +207,9 @@ impl ValueClass {
 impl SingleChar {
   pub const BITS: u8 = 22;
   pub const MAX_CHAR: u32 = 0x3FFFFF;
+
+  #[inline(always)]
+  pub const fn from_ascii(c: ascii::Char) -> Self { Self(c.to_u8() as u32) }
 
   #[inline(always)]
   pub const unsafe fn from_u32(x: u32) -> Self { Self(x) }
@@ -141,18 +263,6 @@ impl SingleChar {
   }
 
   #[inline(always)]
-  const fn assume_byte(x: u32) -> u8 {
-    debug_assert!(x <= u8::MAX as u32);
-    x as u8
-  }
-
-  #[inline(always)]
-  const fn past_five_char_to_byte8(x: u32) -> u32 {
-    debug_assert!(x > Self::MAX_5_BYTE_CHAR);
-    x - 0x3FFF00
-  }
-
-  #[inline(always)]
   pub const fn calculate_leading_code(&self) -> u8 {
     let c = self.as_u32();
     let ret: u32 = match self.calculate_value_class() {
@@ -161,9 +271,9 @@ impl SingleChar {
       ValueClass::Three => 0xE0 | (c >> 12),
       ValueClass::Four => 0xF0 | (c >> 18),
       ValueClass::Five => 0xF8,
-      ValueClass::PastFive => 0xC0 | ((Self::past_five_char_to_byte8(c) >> 6) & 0x01),
+      ValueClass::PastFive => 0xC0 | ((past_five_char_to_byte8(c) >> 6) & 0x01),
     };
-    Self::assume_byte(ret)
+    assume_byte(ret)
   }
 
   const MAX_MULTIBYTE_LENGTH: usize = 5;
@@ -173,56 +283,6 @@ impl SingleChar {
   const NZ_3: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(3) };
   const NZ_4: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(4) };
   const NZ_5: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(5) };
-
-  pub const fn write_bytes(
-    &self,
-    out: &mut [MaybeUninit<u8>; Self::MAX_MULTIBYTE_LENGTH],
-  ) -> NonZeroUsize {
-    let c = self.as_u32();
-
-    out[0].write(self.calculate_leading_code());
-
-    match self.calculate_value_class() {
-      ValueClass::One => Self::NZ_1,
-      ValueClass::Two => {
-        let c1: u32 = 0x80 | (c & 0x3F);
-        out[1].write(Self::assume_byte(c1));
-        Self::NZ_2
-      },
-      ValueClass::Three => {
-        let c1: u32 = 0x80 | ((c >> 6) & 0x3F);
-        out[1].write(Self::assume_byte(c1));
-        let c2: u32 = 0x80 | (c & 0x3F);
-        out[2].write(Self::assume_byte(c2));
-        Self::NZ_3
-      },
-      ValueClass::Four => {
-        let c1: u32 = 0x80 | ((c >> 12) & 0x3F);
-        out[1].write(Self::assume_byte(c1));
-        let c2: u32 = 0x80 | ((c >> 6) & 0x3F);
-        out[2].write(Self::assume_byte(c2));
-        let c3: u32 = 0x80 | (c & 0x3F);
-        out[3].write(Self::assume_byte(c3));
-        Self::NZ_4
-      },
-      ValueClass::Five => {
-        let c1: u32 = 0x80 | ((c >> 18) & 0x0F);
-        out[1].write(Self::assume_byte(c1));
-        let c2: u32 = 0x80 | ((c >> 12) & 0x3F);
-        out[2].write(Self::assume_byte(c2));
-        let c3: u32 = 0x80 | ((c >> 6) & 0x3F);
-        out[3].write(Self::assume_byte(c3));
-        let c4: u32 = 0x80 | (c & 0x3F);
-        out[4].write(Self::assume_byte(c4));
-        Self::NZ_5
-      },
-      ValueClass::PastFive => {
-        let c1: u32 = 0x80 | (Self::past_five_char_to_byte8(c) & 0x3F);
-        out[1].write(Self::assume_byte(c1));
-        Self::NZ_2
-      },
-    }
-  }
 
   const MIN_MULTIBYTE_LEADING_CODE: u32 = 0xC0;
   const MAX_MULTIBYTE_LEADING_CODE: u32 = 0xF8;
