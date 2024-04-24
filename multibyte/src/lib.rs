@@ -505,6 +505,7 @@ struct CodepointIterator<'a> {
 impl<'a> Iterator for CodepointIterator<'a> {
   type Item = EncodedChar;
 
+  #[inline(always)]
   fn next(&mut self) -> Option<EncodedChar> {
     if self.data.is_empty() {
       return None;
@@ -526,13 +527,25 @@ impl<'a> PackedString<'a> {
   #[inline(always)]
   pub const unsafe fn from_bytes(bytes: &'a [u8]) -> Self { Self(bytes) }
 
-  pub fn try_from_bytes(bytes: &'a [u8]) -> Self { todo!() }
+  #[inline]
+  pub fn try_from_bytes(bytes: &'a [u8]) -> Result<(Self, usize), DecodeError> {
+    let mut remaining = bytes;
+    let mut num_encoded_chars_seen: usize = 0;
+    while !remaining.is_empty() {
+      let (_encoded_char, new_remaining) = EncodedChar::try_parse(remaining)?;
+      remaining = new_remaining;
+      num_encoded_chars_seen += 1;
+    }
+    Ok((unsafe { Self::from_bytes(bytes) }, num_encoded_chars_seen))
+  }
 
+  #[inline(always)]
   pub fn iter_encoded_chars(&self) -> impl Iterator<Item=EncodedChar>+'_ {
     let Self(data) = self;
     CodepointIterator { data }
   }
 
+  #[inline(always)]
   pub fn iter_uniform_chars(&self) -> impl Iterator<Item=SingleChar>+'_ {
     self.iter_encoded_chars().map(EncodedChar::into_uniform)
   }
