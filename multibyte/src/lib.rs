@@ -26,6 +26,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(ascii_char)]
 #![feature(const_mut_refs)]
 #![feature(const_maybe_uninit_write)]
+#![feature(const_try)]
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
@@ -49,7 +50,12 @@ use alloc_types::*;
 #[cfg(not(test))]
 extern crate alloc;
 
-use core::{alloc::Allocator, ascii, mem::MaybeUninit, num::NonZeroUsize};
+use core::{
+  alloc::Allocator,
+  ascii,
+  mem::{self, MaybeUninit},
+  num::NonZeroUsize,
+};
 
 
 #[allow(dead_code)]
@@ -73,6 +79,22 @@ const fn past_five_char_to_byte8(x: u32) -> u32 {
   x - 0x3FFF00
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum DecodeError {
+  Empty,
+  NotEnoughSpace { required: u8, available: u8 },
+  InvalidWValue(u32),
+  InvalidW1Value(u32),
+  InvalidW2Value(u32),
+  InvalidW3Value(u64),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EncodeError {
+  Empty,
+  NotEnoughSpace { required: u8, available: u8 },
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum EncodedChar {
   One(ascii::Char),
@@ -85,7 +107,7 @@ pub enum EncodedChar {
 
 impl EncodedChar {
   #[inline(always)]
-  pub const fn encode(x: SingleChar) -> Self {
+  pub const fn from_uniform(x: SingleChar) -> Self {
     let c = x.as_u32();
 
     match x.calculate_value_class() {
@@ -144,7 +166,7 @@ impl EncodedChar {
   }
 
   #[inline(always)]
-  pub const fn decode(self) -> SingleChar {
+  pub const fn into_uniform(self) -> SingleChar {
     match self {
       Self::One(c) => SingleChar::from_ascii(c),
       Self::Two([c1, c2]) => {
@@ -176,6 +198,188 @@ impl EncodedChar {
         unsafe { SingleChar::from_u32(d + 0x3FFF80) }
       },
     }
+  }
+
+  #[inline(always)]
+  const fn bytes_by_char_head(byte: u8) -> usize {
+    if (byte & 0x80) == 0 {
+      1
+    } else if (byte & 0x20) == 0 {
+      2
+    } else if (byte & 0x10) == 0 {
+      3
+    } else if (byte & 0x08) == 0 {
+      4
+    } else {
+      5
+    }
+  }
+
+  #[inline]
+  pub fn try_parse(x: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+    let (c, rest) = x.split_first().ok_or(DecodeError::Empty)?;
+    let c = *c;
+    let required = Self::bytes_by_char_head(c);
+    if required > x.len() {
+      assert!(required <= u8::MAX as usize);
+      assert!(x.len() <= u8::MAX as usize);
+      return Err(DecodeError::NotEnoughSpace {
+        required: required as u8,
+        available: x.len() as u8,
+      });
+    }
+    Ok(match required {
+      1 => {
+        debug_assert_eq!(c & 0x80, 0);
+        debug_assert!(ascii::Char::from_u8(c).is_some());
+        (
+          Self::One(unsafe { ascii::Char::from_u8_unchecked(c) }),
+          &x[1..],
+        )
+      },
+      2 => {
+        let (d, rest) = rest.split_first().unwrap();
+        let d = *d;
+        let w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
+        if w > 0x2DF || w < 0x2C0 {
+          return Err(DecodeError::InvalidWValue(w));
+        }
+        let ret = if w < 0x2C2 {
+          Self::PastFive([c, d])
+        } else {
+          Self::Two([c, d])
+        };
+        (ret, rest)
+      },
+      3 => {
+        let ([d, e], rest) = rest.split_first_chunk().unwrap();
+        let d = *d;
+        let e = *e;
+        let mut w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
+        if w > 0x2DF || w < 0x2C0 {
+          return Err(DecodeError::InvalidWValue(w));
+        }
+        w += ((e as u32) & 0xC0) << 4;
+        let w1: u32 = w | (((d as u32) & 0x20) >> 2);
+        if w1 < 0xAE1 || w1 > 0xAEF {
+          return Err(DecodeError::InvalidW1Value(w1));
+        }
+        (Self::Three([c, d, e]), rest)
+      },
+      4 => {
+        let ([d, e, f], rest) = rest.split_first_chunk().unwrap();
+        let d = *d;
+        let e = *e;
+        let f = *f;
+        let mut w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
+        if w > 0x2DF || w < 0x2C0 {
+          return Err(DecodeError::InvalidWValue(w));
+        }
+        w += ((e as u32) & 0xC0) << 4;
+        let w1: u32 = w | (((d as u32) & 0x20) >> 2);
+        if w1 < 0xAE1 || w1 > 0xAEF {
+          return Err(DecodeError::InvalidW1Value(w1));
+        }
+        w += ((f as u32) & 0xC0) << 6;
+        let w2: u32 = w | (((d as u32) & 0x30) >> 3);
+        if w2 < 0x2AF1 || w2 > 0x2AF7 {
+          return Err(DecodeError::InvalidW2Value(w2));
+        }
+        (Self::Four([c, d, e, f]), rest)
+      },
+      5 => {
+        let ([d, e, f, g], rest) = rest.split_first_chunk().unwrap();
+        let d = *d;
+        let e = *e;
+        let f = *f;
+        let g = *g;
+        let mut w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
+        if w > 0x2DF || w < 0x2C0 {
+          return Err(DecodeError::InvalidWValue(w));
+        }
+        w += ((e as u32) & 0xC0) << 4;
+        let w1: u32 = w | (((d as u32) & 0x20) >> 2);
+        if w1 < 0xAE1 || w1 > 0xAEF {
+          return Err(DecodeError::InvalidW1Value(w1));
+        }
+        w += ((f as u32) & 0xC0) << 6;
+        let w2: u32 = w | (((d as u32) & 0x30) >> 3);
+        if w2 < 0x2AF1 || w2 > 0x2AF7 {
+          return Err(DecodeError::InvalidW2Value(w2));
+        }
+        let lw: u64 = (w as u64) + (((g as u64) & 0xC0) << 8);
+        let w3: u64 = (lw << 24) + ((d as u64) << 16) + ((d as u64) << 8) + (f as u64);
+        if w3 < 0xAAF8888080 || w3 > 0xAAF88FBFBD {
+          return Err(DecodeError::InvalidW3Value(w3));
+        }
+        (Self::Five([c, d, e, f, g]), rest)
+      },
+      _ => unreachable!("bytes_by_char_head() should never return any other value!"),
+    })
+  }
+
+  #[inline(always)]
+  pub const fn byte_len(&self) -> usize {
+    match self {
+      &Self::One(_) => 1,
+      &Self::Two(_) | &Self::PastFive(_) => 2,
+      &Self::Three(_) => 3,
+      &Self::Four(_) => 4,
+      &Self::Five(_) => 5,
+    }
+  }
+
+  #[inline]
+  pub fn try_write(self, x: &mut [MaybeUninit<u8>]) -> Result<&mut [MaybeUninit<u8>], EncodeError> {
+    if x.is_empty() {
+      return Err(EncodeError::Empty);
+    }
+    let required = self.byte_len();
+    if required > x.len() {
+      assert!(required <= u8::MAX as usize);
+      assert!(x.len() <= u8::MAX as usize);
+      return Err(EncodeError::NotEnoughSpace {
+        required: required as u8,
+        available: x.len() as u8,
+      });
+    }
+    Ok(match self {
+      Self::One(c) => {
+        let (head, rest) = x.split_first_mut().unwrap();
+        head.write(c.to_u8());
+        rest
+      },
+      Self::Two(data) => {
+        let (head, rest): (&mut [MaybeUninit<u8>; 2], _) = x.split_first_chunk_mut().unwrap();
+        let head: &mut MaybeUninit<[u8; 2]> = unsafe { mem::transmute(head) };
+        head.write(data);
+        rest
+      },
+      Self::PastFive(data) => {
+        let (head, rest): (&mut [MaybeUninit<u8>; 2], _) = x.split_first_chunk_mut().unwrap();
+        let head: &mut MaybeUninit<[u8; 2]> = unsafe { mem::transmute(head) };
+        head.write(data);
+        rest
+      },
+      Self::Three(data) => {
+        let (head, rest): (&mut [MaybeUninit<u8>; 3], _) = x.split_first_chunk_mut().unwrap();
+        let head: &mut MaybeUninit<[u8; 3]> = unsafe { mem::transmute(head) };
+        head.write(data);
+        rest
+      },
+      Self::Four(data) => {
+        let (head, rest): (&mut [MaybeUninit<u8>; 4], _) = x.split_first_chunk_mut().unwrap();
+        let head: &mut MaybeUninit<[u8; 4]> = unsafe { mem::transmute(head) };
+        head.write(data);
+        rest
+      },
+      Self::Five(data) => {
+        let (head, rest): (&mut [MaybeUninit<u8>; 5], _) = x.split_first_chunk_mut().unwrap();
+        let head: &mut MaybeUninit<[u8; 5]> = unsafe { mem::transmute(head) };
+        head.write(data);
+        rest
+      },
+    })
   }
 }
 
