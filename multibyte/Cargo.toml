@@ -9,12 +9,14 @@ authors.workspace       = true
 
 [dependencies]
 cfg-if.workspace        = true
-smallvec.workspace      = true
 static_assertions.workspace = true
 
-[dev-dependencies]
-proptest.workspace      = true
-proptest-derive.workspace = true
+proptest                = { workspace = true, optional = true }
+proptest-derive         = { workspace = true, optional = true }
+
+[features]
+default = ["proptest"]
+proptest = ["dep:proptest", "dep:proptest-derive"]
 
 [lints]
 workspace               = true

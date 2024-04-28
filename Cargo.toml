@@ -23,9 +23,9 @@ authors                 = ["Danny McClanahan <dmcC2@hypnicjerk.ai>"]
 [workspace.dependencies]
 emacs-regexp            = { path = "./" }
 emacs-regexp-automata   = { path = "./automata" }
-emacs-regexp-syntax     = { path = "./syntax" }
+emacs-regexp-syntax     = { path = "./syntax", default-features = false }
 emacs-regexp-ffi        = { path = "./ffi" }
-emacs-multibyte         = { path = "./multibyte" }
+emacs-multibyte         = { path = "./multibyte", default-features = false }
 
 cfg-if                  = "1"
 displaydoc              = { version = "0.2.4", default-features = false }
@@ -38,7 +38,7 @@ proptest-derive         = "0.4.0"
 # Packages we've had to hack to get no_std/allocator_api support:
 indexmap                = { git = "https://github.com/cosmicexplorer/indexmap", rev = "5e6571b26fd02ae9d9ee4c82340dded94bbe5d1a", default-features = false }
 thiserror               = { git = "https://github.com/cosmicexplorer/thiserror", rev = "a108a9ef284ab09e07175254ba1b6a7f245a10fc", default-features = false }
-smallvec = { git = "https://github.com/cosmicexplorer/rust-smallvec", rev = "016180324133445f01135fd5a833ddb83c0656a3", features = ["specialization", "may_dangle"] }
+smallvec                = { git = "https://github.com/cosmicexplorer/rust-smallvec", rev = "016180324133445f01135fd5a833ddb83c0656a3", features = ["specialization", "may_dangle"] }
 
 [workspace.lints.clippy]
 len_without_is_empty    = "allow"

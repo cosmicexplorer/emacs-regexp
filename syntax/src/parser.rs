@@ -1090,7 +1090,7 @@ mod test {
   use proptest::prelude::*;
 
   use super::*;
-  use crate::encoding::{ByteEncoding, UnicodeEncoding};
+  use crate::encoding::{ByteEncoding, MultibyteEncoding, UnicodeEncoding};
 
   #[test]
   fn parse_single_lit() {
@@ -1223,6 +1223,19 @@ mod test {
   }
 
   prop_compose! {
+    fn gen_expr_byte()
+      (
+        e in prop::arbitrary::arbitrary_with::<
+          Expr<ByteEncoding, Global>,
+          _,
+          _
+        >((((), 5, Global), 5, 5, 5, 5, 5))
+      ) -> Expr<ByteEncoding, Global> {
+        e
+      }
+  }
+
+  prop_compose! {
     fn gen_expr_utf8()
       (
         e in prop::arbitrary::arbitrary_with::<
@@ -1235,13 +1248,50 @@ mod test {
       }
   }
 
+  prop_compose! {
+    fn gen_expr_multibyte()
+      (
+        e in prop::arbitrary::arbitrary_with::<
+          Expr<MultibyteEncoding, Global>,
+          _,
+          _
+        >((((), 5, Global), 5, 5, 5, 5, 5))
+      ) -> Expr<MultibyteEncoding, Global> {
+        e
+      }
+  }
+
+  /* FIXME: how to handle non-ascii chars? */
+  /* proptest! { */
+  /*   #[test] */
+  /*   fn parse_byte_roundtrip(e in gen_expr_byte()) { */
+  /*     let formatted = format!("{}", e); */
+  /*     let parsed = parse::<ByteEncoding, Global>(formatted.as_bytes(), Global); */
+  /*     prop_assert!(parsed.is_ok()); */
+  /*     let parsed = parsed.unwrap(); */
+  /*     prop_assert_eq!(e, parsed); */
+  /*   } */
+  /* } */
+
   proptest! {
-    /* TODO: add multibyte and "binary" versions of this once we figure out good semantics for
-     * those! */
     #[test]
     fn parse_utf8_roundtrip(e in gen_expr_utf8()) {
       let formatted = format!("{}", e);
       let parsed = parse::<UnicodeEncoding, Global>(&formatted, Global);
+      prop_assert!(parsed.is_ok());
+      let parsed = parsed.unwrap();
+      prop_assert_eq!(e, parsed);
+    }
+  }
+
+  /* FIXME: how to handle non-unicode chars? */
+  proptest! {
+    #[test]
+    fn parse_multibyte_roundtrip(e in gen_expr_multibyte()) {
+      let formatted = format!("{}", e);
+      let parsed = parse::<MultibyteEncoding, Global>(
+        emacs_multibyte::PackedString::from_str(&formatted),
+        Global);
       prop_assert!(parsed.is_ok());
       let parsed = parsed.unwrap();
       prop_assert_eq!(e, parsed);

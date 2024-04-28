@@ -15,9 +15,12 @@ displaydoc.workspace    = true
 static_assertions.workspace = true
 thiserror.workspace     = true
 
-[dev-dependencies]
-proptest.workspace      = true
-proptest-derive.workspace = true
+proptest                = { workspace = true, optional = true }
+proptest-derive         = { workspace = true, optional = true }
+
+[features]
+default = ["proptest"]
+proptest = ["dep:proptest", "dep:proptest-derive", "emacs-multibyte/proptest"]
 
 [lints]
 workspace               = true

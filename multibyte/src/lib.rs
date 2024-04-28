@@ -61,7 +61,7 @@ use core::{
   mem::{self, MaybeUninit},
 };
 
-#[cfg(test)]
+#[cfg(feature = "proptest")]
 use proptest::{collection::vec, prelude::*};
 
 
@@ -74,12 +74,17 @@ const fn max_value_for_bit_width_64(bits: u8) -> u64 { (1u64 << (bits as u64)) -
 pub struct SingleChar(u32);
 pub type Char = SingleChar;
 
-#[cfg(test)]
+#[cfg(feature = "proptest")]
 impl Arbitrary for SingleChar {
   type Parameters = ();
   type Strategy = BoxedStrategy<Self>;
 
-  fn arbitrary_with(_args: ()) -> Self::Strategy { (0u32..=Self::MAX_CHAR).prop_map(Self).boxed() }
+  /* FIXME: how to handle non-unicode chars? */
+  /* fn arbitrary_with(_args: ()) -> Self::Strategy {
+   * (0u32..=Self::MAX_CHAR).prop_map(Self).boxed() } */
+  fn arbitrary_with(_args: ()) -> Self::Strategy {
+    (0u32..=Self::MAX_UNICODE_CHAR).prop_map(Self).boxed()
+  }
 }
 
 #[inline(always)]
@@ -127,7 +132,7 @@ pub enum EncodedChar {
   Raw([u8; 2]),
 }
 
-#[cfg(test)]
+#[cfg(feature = "proptest")]
 impl Arbitrary for EncodedChar {
   type Parameters = ();
   type Strategy = BoxedStrategy<Self>;
@@ -274,8 +279,6 @@ impl EncodedChar {
         let d = *d;
         let w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
         if w > 0x2DF || w < 0x2C0 {
-          #[cfg(test)]
-          dbg!(w);
           return Err(DecodeError::InvalidWValue(w));
         }
         let ret = if w < 0x2C2 {
@@ -601,7 +604,7 @@ impl<A: Allocator> fmt::Debug for OwnedString<A> {
   }
 }
 
-#[cfg(test)]
+#[cfg(feature = "proptest")]
 impl<A> Arbitrary for OwnedString<A>
 where A: Allocator+Clone+Default+fmt::Debug+'static
 {
