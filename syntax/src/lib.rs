@@ -311,23 +311,12 @@ pub mod encoding {
 
     fn iter(s: &Self::Str) -> impl Iterator<Item=char> { s.chars() }
 
+    /* FIXME: use smallvec! */
     type String<A: Allocator> = Box<str, A>;
 
     #[inline]
     fn coalesce<A: Allocator>(s: Vec<char, A>, alloc: A) -> Self::String<A> {
-      /* FIXME: use smallvec! */
-      let complete_len: usize = s.iter().map(|c| c.len_utf8()).sum();
-      let mut d: Box<[u8], A> =
-        unsafe { Box::new_zeroed_slice_in(complete_len, alloc).assume_init() };
-      {
-        let mut d_ret: &mut [u8] = d.as_mut();
-        for c in s.into_iter() {
-          let cur_written = c.encode_utf8(d_ret).as_bytes().len();
-          d_ret = &mut d_ret[cur_written..];
-        }
-        debug_assert!(d_ret.is_empty());
-      };
-      unsafe { crate::util::boxing::box_into_string(d) }
+      crate::util::string::coalesce_utf8_chars(s.into_iter(), alloc)
     }
 
     #[inline(always)]
