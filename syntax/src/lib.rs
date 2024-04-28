@@ -25,6 +25,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(trait_alias)]
 #![feature(ascii_char)]
 #![feature(new_uninit)]
+#![feature(maybe_uninit_write_slice)]
 #![feature(slice_ptr_get)]
 #![feature(layout_for_ptr)]
 #![cfg_attr(not(test), no_std)]
@@ -51,7 +52,7 @@ pub mod ast;
 pub mod parser;
 
 pub mod encoding {
-  use core::{alloc::Allocator, ascii, fmt, hash::Hash, str};
+  use core::{alloc::Allocator, ascii, fmt, hash::Hash, mem::MaybeUninit, str};
 
   use emacs_multibyte::{OwnedString, PackedString, SingleChar};
 
@@ -71,6 +72,10 @@ pub mod encoding {
 
     fn str_ref<'s, 'a, A: Allocator>(s: &'s Self::String<A>) -> Self::Str<'a>
     where 's: 'a;
+
+    fn owned_str<'s, A: Allocator>(data: Self::Str<'s>, alloc: A) -> Self::String<A>;
+
+    fn str_allocator<'s, A: Allocator>(s: &'s Self::String<A>) -> &'s A;
 
     fn coalesce<A: Allocator>(s: Vec<Self::Single, A>, alloc: A) -> Self::String<A>;
 
@@ -230,6 +235,16 @@ pub mod encoding {
     }
 
     #[inline(always)]
+    fn owned_str<'s, A: Allocator>(data: &'s [u8], alloc: A) -> Box<[u8], A> {
+      let mut new_data: Box<[MaybeUninit<u8>], A> = Box::new_uninit_slice_in(data.len(), alloc);
+      MaybeUninit::copy_from_slice(new_data.as_mut(), data);
+      unsafe { new_data.assume_init() }
+    }
+
+    #[inline(always)]
+    fn str_allocator<'s, A: Allocator>(s: &'s Self::String<A>) -> &'s A { Box::allocator(s) }
+
+    #[inline(always)]
     fn coalesce<A: Allocator>(s: Vec<u8, A>, _alloc: A) -> Self::String<A> { s.into_boxed_slice() }
 
     #[inline(always)]
@@ -330,6 +345,17 @@ pub mod encoding {
     where 's: 'a {
       s.as_ref()
     }
+
+    #[inline(always)]
+    fn owned_str<'s, A: Allocator>(data: &'s str, alloc: A) -> Box<str, A> {
+      let mut new_data: Box<[MaybeUninit<u8>], A> =
+        Box::new_uninit_slice_in(data.as_bytes().len(), alloc);
+      MaybeUninit::copy_from_slice(new_data.as_mut(), data.as_bytes());
+      unsafe { crate::util::boxing::box_into_string(new_data.assume_init()) }
+    }
+
+    #[inline(always)]
+    fn str_allocator<'s, A: Allocator>(s: &'s Self::String<A>) -> &'s A { Box::allocator(s) }
 
     #[inline(always)]
     fn coalesce<A: Allocator>(s: Vec<char, A>, alloc: A) -> Self::String<A> {
@@ -441,6 +467,17 @@ pub mod encoding {
     where 's: 'a {
       s.as_packed_str()
     }
+
+    #[inline(always)]
+    fn owned_str<'s, A: Allocator>(data: PackedString<'s>, alloc: A) -> OwnedString<A> {
+      let mut new_data: Box<[MaybeUninit<u8>], A> =
+        Box::new_uninit_slice_in(data.as_bytes().len(), alloc);
+      MaybeUninit::copy_from_slice(new_data.as_mut(), data.as_bytes());
+      unsafe { OwnedString::from_bytes(new_data.assume_init()) }
+    }
+
+    #[inline(always)]
+    fn str_allocator<'s, A: Allocator>(s: &'s Self::String<A>) -> &'s A { s.allocator() }
 
     #[inline(always)]
     fn coalesce<A: Allocator>(s: Vec<SingleChar, A>, alloc: A) -> Self::String<A> {

@@ -27,6 +27,9 @@ use core::{
   slice,
 };
 
+use emacs_multibyte::{DecodeError, PackedString};
+use emacs_regexp_syntax::encoding::MultibyteEncoding;
+
 use crate::alloc_types::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -58,9 +61,12 @@ pub struct Pattern {
 
 impl Pattern {
   #[inline]
-  pub unsafe fn as_pattern<'n>(&'n self) -> emacs_regexp::Pattern<'n> {
+  pub unsafe fn try_as_pattern<'n>(
+    &'n self,
+  ) -> Result<emacs_regexp::Pattern<'n, MultibyteEncoding>, DecodeError> {
     let Self { data } = self;
-    emacs_regexp::Pattern::new(data.data())
+    let (s, _) = PackedString::try_from_bytes(data.data())?;
+    Ok(emacs_regexp::Pattern::new(s))
   }
 }
 
@@ -160,7 +166,7 @@ pub struct Matcher {
 impl Matcher {
   #[inline]
   pub(crate) fn from_matcher(
-    m: emacs_regexp::Matcher<CallbackAllocator, SharedAllocator>,
+    m: emacs_regexp::Matcher<MultibyteEncoding, CallbackAllocator, SharedAllocator>,
     alloc: CallbackAllocator,
     boxed_alloc: NonNull<CallbackAllocator>,
   ) -> Self {
@@ -175,8 +181,10 @@ impl Matcher {
   }
 
   #[inline(always)]
-  pub(crate) fn as_matcher(&self) -> &emacs_regexp::Matcher<CallbackAllocator, SharedAllocator> {
-    let inner: *mut emacs_regexp::Matcher<CallbackAllocator, SharedAllocator> =
+  pub(crate) fn as_matcher(
+    &self,
+  ) -> &emacs_regexp::Matcher<MultibyteEncoding, CallbackAllocator, SharedAllocator> {
+    let inner: *mut emacs_regexp::Matcher<MultibyteEncoding, CallbackAllocator, SharedAllocator> =
       self.inner.cast().as_ptr();
     unsafe { &*inner }
   }
@@ -188,7 +196,10 @@ impl Matcher {
   pub(crate) unsafe fn into_boxed(
     self,
   ) -> (
-    Box<emacs_regexp::Matcher<CallbackAllocator, SharedAllocator>, CallbackAllocator>,
+    Box<
+      emacs_regexp::Matcher<MultibyteEncoding, CallbackAllocator, SharedAllocator>,
+      CallbackAllocator,
+    >,
     Pin<Box<CallbackAllocator, CallbackAllocator>>,
   ) {
     let Self {
@@ -196,7 +207,7 @@ impl Matcher {
       alloc,
       boxed_alloc,
     } = self;
-    let inner: *mut emacs_regexp::Matcher<CallbackAllocator, SharedAllocator> =
+    let inner: *mut emacs_regexp::Matcher<MultibyteEncoding, CallbackAllocator, SharedAllocator> =
       inner.cast().as_ptr();
     let inner = Box::from_raw_in(inner, alloc);
     let shared_alloc = Box::into_pin(Box::from_raw_in(mem::transmute(boxed_alloc), alloc));
@@ -212,8 +223,11 @@ pub struct Input {
 
 impl Input {
   #[inline]
-  pub unsafe fn as_input<'h>(&'h self) -> emacs_regexp::Input<'h> {
+  pub unsafe fn try_as_input<'h>(
+    &'h self,
+  ) -> Result<emacs_regexp::Input<'h, MultibyteEncoding>, DecodeError> {
     let Self { data } = self;
-    emacs_regexp::Input::new(data.data())
+    let (s, _) = PackedString::try_from_bytes(data.data())?;
+    Ok(emacs_regexp::Input::new(s))
   }
 }

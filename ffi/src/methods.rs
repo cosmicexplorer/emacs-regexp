@@ -20,6 +20,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{ffi::c_char, mem::MaybeUninit, ptr::NonNull};
 
+use emacs_regexp_syntax::encoding::MultibyteEncoding;
+
 use crate::{
   alloc_types::*,
   objects::{CallbackAllocator, Input, Matcher, Pattern, SharedAllocator},
@@ -35,9 +37,10 @@ pub extern "C" fn always_panic() -> ! { todo!("this always panics!") }
 pub enum RegexpError {
   #[default]
   None = 0,
-  ParseError = 1,
-  CompileError = 2,
-  MatchError = 3,
+  DecodeError = 1,
+  ParseError = 2,
+  CompileError = 3,
+  MatchError = 4,
 }
 
 impl RegexpError {
@@ -72,11 +75,14 @@ pub extern "C" fn rex_compile(
   out: &mut MaybeUninit<CompileResult>,
 ) -> RegexpError {
   let alloc = *alloc;
-  let p = unsafe { pattern.as_pattern() };
+  let p = match unsafe { pattern.try_as_pattern() } {
+    Ok(p) => p,
+    Err(_) => return RegexpError::DecodeError,
+  };
 
   let (shared_alloc, boxed_alloc, alloc) = SharedAllocator::from_alloc(alloc);
 
-  let m: emacs_regexp::Matcher<CallbackAllocator, SharedAllocator> =
+  let m: emacs_regexp::Matcher<MultibyteEncoding, CallbackAllocator, SharedAllocator> =
     match emacs_regexp::Matcher::compile(p, alloc, shared_alloc) {
       Ok(m) => m,
       Err(e) => match e {
@@ -129,7 +135,10 @@ pub extern "C" fn rex_execute(
   input: &Input,
 ) -> RegexpError {
   let matcher = matcher.as_matcher();
-  let input = unsafe { input.as_input() };
+  let input = match unsafe { input.try_as_input() } {
+    Ok(i) => i,
+    Err(_) => return RegexpError::DecodeError,
+  };
   RegexpError::wrap(|| {
     matcher.execute(input).map_err(|e| match e {
       emacs_regexp::RegexpError::MatchError => RegexpError::MatchError,
@@ -156,13 +165,13 @@ mod test {
     assert_eq!(rex_compile(&p, &c, &mut m), RegexpError::None);
     let m = unsafe { m.assume_init().matcher };
     let ast = format!("{:?}", m.as_matcher().expr);
-    let expected = "Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] }";
+    let expected = "Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral('a')), Expr::SingleLiteral(SingleLiteral('s')), Expr::SingleLiteral(SingleLiteral('d')), Expr::SingleLiteral(SingleLiteral('f'))] }";
     assert_eq!(ast, expected);
     let e = rex_display_expr(&m, &c);
     let s_e: &str = unsafe { core::ffi::CStr::from_ptr(mem::transmute(e)) }
       .to_str()
       .unwrap();
-    assert_eq!(s_e, "Matcher { data: \"asdf\", expr(\"asdf\"): Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] } }");
+    assert_eq!(s_e, "Matcher { data: \"asdf\", expr(\"asdf\"): Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral('a')), Expr::SingleLiteral(SingleLiteral('s')), Expr::SingleLiteral(SingleLiteral('d')), Expr::SingleLiteral(SingleLiteral('f'))] } }");
 
     let i = Input { data: s };
     assert_eq!(rex_execute(&m, &c, &i), RegexpError::None);

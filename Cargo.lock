@@ -88,7 +88,9 @@ name = "emacs-regexp-ffi"
 version = "0.0.0"
 dependencies = [
  "cfg-if",
+ "emacs-multibyte",
  "emacs-regexp",
+ "emacs-regexp-syntax",
  "libc",
  "static_assertions",
 ]

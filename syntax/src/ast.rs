@@ -286,9 +286,12 @@ pub mod character_alternatives {
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
       let s = <SingleLiteral<L> as Arbitrary>::arbitrary_with(args).prop_filter(
-        "FIXME: rejecting dashes and square braces!",
+        "FIXME: rejecting dashes, carats, and square braces!",
         |SingleLiteral(sl)| {
-          !(*sl == L::DASH || *sl == L::OPEN_SQUARE_BRACE || *sl == L::CLOSE_SQUARE_BRACE)
+          !(*sl == L::DASH
+            || *sl == L::CARAT
+            || *sl == L::OPEN_SQUARE_BRACE
+            || *sl == L::CLOSE_SQUARE_BRACE)
         },
       );
       Union::new([

@@ -17,6 +17,8 @@ libc                    = ["dep:libc"]
 panic-testing           = []
 
 [dependencies]
+emacs-multibyte.workspace = true
+emacs-regexp-syntax.workspace = true
 emacs-regexp.workspace  = true
 
 cfg-if.workspace        = true

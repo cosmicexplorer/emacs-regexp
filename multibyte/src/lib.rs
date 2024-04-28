@@ -26,6 +26,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(const_maybe_uninit_write)]
 #![feature(const_try)]
 #![feature(const_char_from_u32_unchecked)]
+#![feature(const_box)]
 #![feature(effects)]
 #![feature(ascii_char)]
 #![feature(new_uninit)]
@@ -59,6 +60,7 @@ use core::{
   alloc::Allocator,
   ascii, cmp, fmt, hash,
   mem::{self, MaybeUninit},
+  str,
 };
 
 #[cfg(feature = "proptest")]
@@ -69,7 +71,7 @@ use proptest::{collection::vec, prelude::*};
 const fn max_value_for_bit_width_32(bits: u8) -> u32 { max_value_for_bit_width_64(bits) as u32 }
 const fn max_value_for_bit_width_64(bits: u8) -> u64 { (1u64 << (bits as u64)) - 1 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct SingleChar(u32);
 pub type Char = SingleChar;
@@ -83,7 +85,25 @@ impl Arbitrary for SingleChar {
   /* fn arbitrary_with(_args: ()) -> Self::Strategy {
    * (0u32..=Self::MAX_CHAR).prop_map(Self).boxed() } */
   fn arbitrary_with(_args: ()) -> Self::Strategy {
-    (0u32..=Self::MAX_UNICODE_CHAR).prop_map(Self).boxed()
+    any::<char>().prop_map(Self::from_unicode).boxed()
+    /* (0u32..=Self::MAX_UNICODE_CHAR).prop_map(Self).boxed() */
+  }
+}
+
+impl fmt::Debug for SingleChar {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self.try_as_unicode() {
+      Some(c) => write!(f, "{:?}", c),
+      None => write!(f, "SingleChar({:?})", self.as_u32()),
+    }
+  }
+}
+impl fmt::Display for SingleChar {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self.try_as_unicode() {
+      Some(c) => write!(f, "{}", c),
+      None => write!(f, "<SingleChar>({})", self.as_u32()),
+    }
   }
 }
 
@@ -138,6 +158,9 @@ impl Arbitrary for EncodedChar {
   type Strategy = BoxedStrategy<Self>;
 
   fn arbitrary_with(_args: ()) -> Self::Strategy {
+    /* Union::new([ */
+    /* any::<ascii::Char>().prop_map(Self::One).boxed(), */
+    /* ]) */
     any::<SingleChar>().prop_map(Self::from_uniform).boxed()
   }
 }
@@ -545,7 +568,7 @@ impl<'a> Iterator for CodepointIterator<'a> {
   }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct PackedString<'a>(&'a [u8]);
 static_assertions::assert_eq_size!(PackedString<'static>, &'static [u8]);
@@ -591,6 +614,23 @@ impl<'a> PackedString<'a> {
   }
 }
 
+impl<'a> fmt::Debug for PackedString<'a> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match str::from_utf8(self.as_bytes()) {
+      Ok(s) => write!(f, "{:?}", s),
+      Err(e) => todo!("non-utf8 string: {:?}", e),
+    }
+  }
+}
+impl<'a> fmt::Display for PackedString<'a> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match str::from_utf8(self.as_bytes()) {
+      Ok(s) => write!(f, "{}", s),
+      Err(e) => todo!("non-utf8 string: {:?}", e),
+    }
+  }
+}
+
 /* TODO: smallvec? */
 #[derive(Clone)]
 #[repr(transparent)]
@@ -598,10 +638,10 @@ pub struct OwnedString<A: Allocator>(Box<[u8], A>);
 pub type String<A> = OwnedString<A>;
 
 impl<A: Allocator> fmt::Debug for OwnedString<A> {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let Self(data) = self;
-    write!(f, "{:?}", data)
-  }
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{:?}", self.as_packed_str()) }
+}
+impl<A: Allocator> fmt::Display for OwnedString<A> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.as_packed_str()) }
 }
 
 #[cfg(feature = "proptest")]
@@ -643,8 +683,14 @@ where A: Allocator
       }
     }
 
-    Self(buf.into_boxed_slice())
+    unsafe { Self::from_bytes(buf.into_boxed_slice()) }
   }
+
+  #[inline(always)]
+  pub const fn allocator(&self) -> &A { Box::allocator(&self.0) }
+
+  #[inline(always)]
+  pub const unsafe fn from_bytes(s: Box<[u8], A>) -> Self { Self(s) }
 
   #[inline(always)]
   pub const fn as_packed_str(&self) -> PackedString {

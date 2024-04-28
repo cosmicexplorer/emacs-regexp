@@ -35,13 +35,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 extern crate alloc;
 
-use core::{alloc::Allocator, fmt, mem::MaybeUninit, str};
+use core::{alloc::Allocator, fmt, mem};
 
 use displaydoc::Display;
 pub use emacs_regexp_syntax as syntax;
 use emacs_regexp_syntax::{
   ast::expr::Expr,
-  encoding::ByteEncoding,
+  encoding::LiteralEncoding,
   parser::{parse, ParseError},
 };
 use thiserror::Error;
@@ -61,7 +61,6 @@ mod alloc_types {
     }
   }
 }
-use alloc_types::*;
 
 #[derive(Debug, Clone, Display, Error)]
 pub enum RegexpError {
@@ -74,34 +73,37 @@ pub enum RegexpError {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Pattern<'n> {
-  data: &'n [u8],
+pub struct Pattern<'n, L: LiteralEncoding> {
+  data: L::Str<'n>,
 }
 
-impl<'n> Pattern<'n> {
+impl<'n, L: LiteralEncoding> Pattern<'n, L> {
   #[inline(always)]
-  pub const fn new(data: &'n [u8]) -> Self { Self { data } }
+  pub const fn new(data: L::Str<'n>) -> Self { Self { data } }
 }
 
 #[derive(Clone)]
-pub struct Matcher<AData, AExpr>
+pub struct Matcher<L, AData, AExpr>
 where
+  L: LiteralEncoding,
   AData: Allocator,
   AExpr: Allocator,
 {
-  pub data: Box<[u8], AData>,
-  pub expr: Expr<ByteEncoding, AExpr>,
+  pub data: L::String<AData>,
+  pub expr: Expr<L, AExpr>,
 }
 
-impl<AData, AExpr> fmt::Debug for Matcher<AData, AExpr>
+impl<L, AData, AExpr> fmt::Debug for Matcher<L, AData, AExpr>
 where
+  L: LiteralEncoding,
+  L::Single: fmt::Debug,
   AData: Allocator+Clone,
+  L::String<AData>: fmt::Debug,
   AExpr: Allocator,
 {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let Self { data, expr } = self;
-    let expr_display = crate::util::Writer::display_in(expr, Box::allocator(data).clone())?;
-    let data = str::from_utf8(&data).expect("TODO: non-utf8 patterns!");
+    let expr_display = crate::util::Writer::display_in(expr, L::str_allocator(data).clone())?;
     write!(
       f,
       "Matcher {{ data: {:?}, expr({:?}): {:?} }}",
@@ -110,13 +112,15 @@ where
   }
 }
 
-impl<AData, AExpr> Matcher<AData, AExpr>
+impl<L, AData, AExpr> Matcher<L, AData, AExpr>
 where
+  L: LiteralEncoding,
+  L::Single: fmt::Debug,
   AData: Allocator,
   AExpr: Allocator,
 {
   pub fn compile(
-    pattern: Pattern,
+    pattern: Pattern<'_, L>,
     alloc_data: AData,
     alloc_expr: AExpr,
   ) -> Result<Self, RegexpError>
@@ -127,15 +131,10 @@ where
 
     /* Copy the string data into our own allocator.
      * (FIXME: THIS IS FOR TESTING!!) */
-    let new_data: Box<[u8], AData> = {
-      let mut new_data: Box<[MaybeUninit<u8>], AData> =
-        Box::new_uninit_slice_in(data.len(), alloc_data);
-      MaybeUninit::copy_from_slice(new_data.as_mut(), data);
-      unsafe { new_data.assume_init() }
-    };
+    let new_data = L::owned_str(data, alloc_data);
 
     /* Parse the pattern string into an AST! */
-    let expr: Expr<ByteEncoding, AExpr> = parse::<ByteEncoding, _>(data, alloc_expr)?;
+    let expr: Expr<L, AExpr> = parse::<L, _>(data, alloc_expr)?;
 
     Ok(Self {
       data: new_data,
@@ -143,12 +142,15 @@ where
     })
   }
 
-  pub fn execute(&self, input: Input) -> Result<(), RegexpError> {
+  pub fn execute<'i>(&self, input: Input<'i, L>) -> Result<(), RegexpError> {
     let Input { data: input_data } = input;
     let Self { data, .. } = self;
 
     /* (FIXME: THIS IS FOR TESTING!!) */
-    if **data == *input_data {
+    let data: L::Str<'_> = L::str_ref(data);
+    /* FIXME: fix covariance of L::str_ref()!!! */
+    let data: L::Str<'i> = unsafe { mem::transmute(data) };
+    if data == input_data {
       Ok(())
     } else {
       Err(RegexpError::MatchError)
@@ -157,13 +159,13 @@ where
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Input<'h> {
-  data: &'h [u8],
+pub struct Input<'h, L: LiteralEncoding> {
+  data: L::Str<'h>,
 }
 
-impl<'h> Input<'h> {
+impl<'h, L: LiteralEncoding> Input<'h, L> {
   #[inline(always)]
-  pub const fn new(data: &'h [u8]) -> Self { Self { data } }
+  pub const fn new(data: L::Str<'h>) -> Self { Self { data } }
 }
 
 pub mod util {
@@ -243,21 +245,23 @@ pub mod util {
 mod test {
   use std::alloc::Global;
 
+  use emacs_regexp_syntax::encoding::UnicodeEncoding;
+
   use super::*;
 
   #[test]
   fn basic_workflow() {
-    let s = b"asdf";
+    let s = "asdf";
     let p = Pattern { data: s };
 
-    let m = Matcher::compile(p, Global, Global).unwrap();
+    let m = Matcher::<UnicodeEncoding, _, _>::compile(p, Global, Global).unwrap();
     let ast = format!("{:?}", m.expr);
-    assert_eq!(ast, "Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral(97)), Expr::SingleLiteral(SingleLiteral(115)), Expr::SingleLiteral(SingleLiteral(100)), Expr::SingleLiteral(SingleLiteral(102))] }");
+    assert_eq!(ast, "Expr::Concatenation { components: [Expr::SingleLiteral(SingleLiteral('a')), Expr::SingleLiteral(SingleLiteral('s')), Expr::SingleLiteral(SingleLiteral('d')), Expr::SingleLiteral(SingleLiteral('f'))] }");
 
     let i = Input { data: s };
     m.execute(i).unwrap();
 
-    let s2 = b"bsdf";
+    let s2 = "bsdf";
     let i2 = Input { data: s2 };
     match m.execute(i2) {
       Err(RegexpError::MatchError) => (),
@@ -268,11 +272,11 @@ mod test {
   #[test]
   fn parse_error() {
     /* This fails because it has a close group without any open group. */
-    let s = b"as\\)";
+    let s = "as\\)";
     let p = Pattern { data: s };
 
     assert!(matches!(
-      Matcher::compile(p, Global, Global),
+      Matcher::<UnicodeEncoding, _, _>::compile(p, Global, Global),
       Err(RegexpError::ParseError(_))
     ));
   }
