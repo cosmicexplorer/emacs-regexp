@@ -33,6 +33,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
+#[cfg(not(test))]
 extern crate alloc;
 
 use core::{alloc::Allocator, fmt, mem};
@@ -45,8 +46,6 @@ use emacs_regexp_syntax::{
   parser::{parse, ParseError},
 };
 use thiserror::Error;
-
-pub mod nfa;
 
 #[allow(unused_imports)]
 mod alloc_types {
@@ -171,7 +170,7 @@ impl<'h, L: LiteralEncoding> Input<'h, L> {
 pub mod util {
   use core::{alloc::Allocator, fmt, str};
 
-  pub use emacs_regexp_syntax::util::boxing;
+  pub use emacs_regexp_syntax::util::{boxing, string};
 
   use crate::alloc_types::*;
 

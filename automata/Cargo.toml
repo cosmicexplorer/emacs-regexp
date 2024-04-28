@@ -8,11 +8,11 @@ repository.workspace    = true
 authors.workspace       = true
 
 [dependencies]
-hashbrown               = { version = "0.14", default-features = false, features = ["nightly", "inline-more"] }
+cfg-if.workspace        = true
+hashbrown.workspace     = true
+indexmap.workspace      = true
 rustc-hash.workspace    = true
-# smallvec.workspace = true
-# TODO: enable hw acceleration! see https://docs.rs/xxhash-rust/latest/xxhash_rust/#hw-acceleration
-xxhash-rust             = { version = "0.8.10", features = ["xxh3", "const_xxh3"] }
+xxhash-rust.workspace   = true
 
 [lints]
 workspace               = true

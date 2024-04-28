@@ -23,15 +23,35 @@ use core::{alloc::Allocator, hash::BuildHasherDefault};
 use indexmap::IndexMap;
 use rustc_hash::FxHasher;
 
+use crate::alloc_types::*;
 
-pub struct State;
 
-pub enum Transition {
-  Epsilon,
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct State(usize);
+
+/// NB: We avoid coalescing epsilon transitions at all!
+#[derive(Copy, Clone, Debug)]
+pub enum Transitions<Sym> {
+  SingleEpsilon(State),
+  DoubleEpsilon(State, State),
+  Symbol(Sym, State),
 }
 
-pub struct Node {}
+#[derive(Copy, Clone, Debug)]
+pub struct Node<Sym> {
+  id: State,
+  trans: Transitions<Sym>,
+}
 
+#[derive(Clone)]
+pub struct Universe<Sym, A: Allocator> {
+  states: Vec<Node<Sym>, A>,
+}
+
+/* impl<Sym, A> Universe<Sym, A> where A: Allocator { */
+/*   pub fn construct(); */
+/* } */
 
 struct M<A>
 where A: Allocator

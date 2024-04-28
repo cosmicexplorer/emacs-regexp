@@ -1052,7 +1052,7 @@ pub mod expr {
     Backref(Backref),
     /// `^` or `$`
     Anchor(Anchor),
-    /// `[a-z]` or `\w` or `\s-`
+    /// `[a-z]` or `\w` or `\s-` or `.`
     CharSelector(SingleCharSelector<L, A>),
     /// `<expr><op>`
     Postfix {

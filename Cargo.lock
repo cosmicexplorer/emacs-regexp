@@ -78,7 +78,9 @@ dependencies = [
 name = "emacs-regexp-automata"
 version = "0.0.0"
 dependencies = [
+ "cfg-if",
  "hashbrown",
+ "indexmap",
  "rustc-hash",
  "xxhash-rust",
 ]

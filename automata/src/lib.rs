@@ -33,12 +33,28 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
+#[cfg(not(test))]
 extern crate alloc;
+
+#[allow(unused_imports)]
+mod alloc_types {
+  /* no_std/no_main is enabled except for test environments, so we need to use
+   * the special imports from the extern alloc crate. */
+  cfg_if::cfg_if! {
+    if #[cfg(test)] {
+      pub use Box;
+      pub use Vec;
+    } else {
+      pub use ::alloc::{boxed::Box, vec::Vec};
+    }
+  }
+}
 
 pub mod filters;
 pub mod hashgrams;
 pub mod litblock;
 pub mod literal;
+pub mod nfa;
 pub mod trie;
 
 pub mod input {

@@ -20,10 +20,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{alloc::Allocator, simd::prelude::*};
 
-#[cfg(not(test))]
-use ::alloc::vec::Vec;
-
-use crate::{continuation, ComponentOffset, IntraComponentInterval, UnanchoredMatchResult};
+use crate::{
+  alloc_types::*, continuation, ComponentOffset, IntraComponentInterval, UnanchoredMatchResult,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
