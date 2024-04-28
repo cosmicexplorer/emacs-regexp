@@ -230,7 +230,7 @@ pub struct ParseError {
   pub at: usize,
 }
 
-pub fn parse<L, A>(pattern: &L::Str, alloc: A) -> Result<Expr<L, A>, ParseError>
+pub fn parse<'a, L, A>(pattern: L::Str<'a>, alloc: A) -> Result<Expr<L, A>, ParseError>
 where
   L: LiteralEncoding,
   L::Single: fmt::Debug,
@@ -385,41 +385,48 @@ where
           debug_assert_eq!(class_chars[0], L::COLON);
           debug_assert_eq!(class_chars[class_chars.len() - 1], L::COLON);
           let new_class = if character == L::CLOSE_SQUARE_BRACE {
-            let class_str = L::coalesce(class_chars, alloc.clone());
-            let class_str: &L::Str = class_str.as_ref();
-            if class_str == L::CLASS_ASCII {
+            let class_str: L::String<A> = L::coalesce(
+              mem::replace(&mut class_chars, Vec::new_in(alloc.clone())),
+              alloc.clone(),
+            );
+            let class_str_ref: L::Str<'_> = L::str_ref(&class_str);
+            /* FIXME: It's valid to compare an L::Str<'_> (or an L::Str<'a>) to an
+             * L::Str<'static>, but the lifetime variance here is wrong and requires a
+             * transmute. */
+            let class_str_ref: L::Str<'static> = unsafe { mem::transmute(class_str_ref) };
+            if class_str_ref == L::CLASS_ASCII {
               CharacterClass::ASCII
-            } else if class_str == L::CLASS_NONASCII {
+            } else if class_str_ref == L::CLASS_NONASCII {
               CharacterClass::NonASCII
-            } else if class_str == L::CLASS_ALNUM {
+            } else if class_str_ref == L::CLASS_ALNUM {
               CharacterClass::AlNum
-            } else if class_str == L::CLASS_ALPHA {
+            } else if class_str_ref == L::CLASS_ALPHA {
               CharacterClass::Alpha
-            } else if class_str == L::CLASS_BLANK {
+            } else if class_str_ref == L::CLASS_BLANK {
               CharacterClass::Blank
-            } else if class_str == L::CLASS_SPACE {
+            } else if class_str_ref == L::CLASS_SPACE {
               CharacterClass::Whitespace
-            } else if class_str == L::CLASS_CNTRL {
+            } else if class_str_ref == L::CLASS_CNTRL {
               CharacterClass::Control
-            } else if class_str == L::CLASS_DIGIT {
+            } else if class_str_ref == L::CLASS_DIGIT {
               CharacterClass::Digit
-            } else if class_str == L::CLASS_XDIGIT {
+            } else if class_str_ref == L::CLASS_XDIGIT {
               CharacterClass::HexDigit
-            } else if class_str == L::CLASS_PRINT {
+            } else if class_str_ref == L::CLASS_PRINT {
               CharacterClass::Printing
-            } else if class_str == L::CLASS_GRAPH {
+            } else if class_str_ref == L::CLASS_GRAPH {
               CharacterClass::Graphic
-            } else if class_str == L::CLASS_LOWER {
+            } else if class_str_ref == L::CLASS_LOWER {
               CharacterClass::LowerCase
-            } else if class_str == L::CLASS_UPPER {
+            } else if class_str_ref == L::CLASS_UPPER {
               CharacterClass::UpperCase
-            } else if class_str == L::CLASS_UNIBYTE {
+            } else if class_str_ref == L::CLASS_UNIBYTE {
               CharacterClass::Unibyte
-            } else if class_str == L::CLASS_MULTIBYTE {
+            } else if class_str_ref == L::CLASS_MULTIBYTE {
               CharacterClass::Multibyte
-            } else if class_str == L::CLASS_WORD {
+            } else if class_str_ref == L::CLASS_WORD {
               CharacterClass::Word
-            } else if class_str == L::CLASS_PUNCT {
+            } else if class_str_ref == L::CLASS_PUNCT {
               CharacterClass::Punctuation
             } else {
               return Err(ParseError {

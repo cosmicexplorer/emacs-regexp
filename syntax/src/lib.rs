@@ -53,19 +53,24 @@ pub mod parser;
 pub mod encoding {
   use core::{alloc::Allocator, ascii, fmt, hash::Hash, str};
 
+  use emacs_multibyte::{OwnedString, PackedString, SingleChar};
+
   use crate::alloc_types::*;
 
   pub trait LiteralRequirements = Eq+Ord+Hash;
 
   pub trait LiteralEncoding {
     type Single: LiteralRequirements+Copy+Clone;
-    type Str: LiteralRequirements+?Sized+'static;
+    type Str<'a>: LiteralRequirements+Copy+Clone;
 
     fn fmt(s: &Self::Single, f: &mut fmt::Formatter) -> fmt::Result;
 
-    fn iter(s: &Self::Str) -> impl Iterator<Item=Self::Single>;
+    fn iter<'a>(s: Self::Str<'a>) -> impl Iterator<Item=Self::Single>+'a;
 
-    type String<A: Allocator>: LiteralRequirements+AsRef<Self::Str>;
+    type String<A: Allocator>: LiteralRequirements;
+
+    fn str_ref<'s, 'a, A: Allocator>(s: &'s Self::String<A>) -> Self::Str<'a>
+    where 's: 'a;
 
     fn coalesce<A: Allocator>(s: Vec<Self::Single, A>, alloc: A) -> Self::String<A>;
 
@@ -142,39 +147,39 @@ pub mod encoding {
     const CLOSE_SQUARE_BRACE: Self::Single;
 
     /// `:ascii:`
-    const CLASS_ASCII: &'static Self::Str;
+    const CLASS_ASCII: Self::Str<'static>;
     /// `:nonascii:`
-    const CLASS_NONASCII: &'static Self::Str;
+    const CLASS_NONASCII: Self::Str<'static>;
     /// `:alnum:`
-    const CLASS_ALNUM: &'static Self::Str;
+    const CLASS_ALNUM: Self::Str<'static>;
     /// `:alpha:`
-    const CLASS_ALPHA: &'static Self::Str;
+    const CLASS_ALPHA: Self::Str<'static>;
     /// `:blank:`
-    const CLASS_BLANK: &'static Self::Str;
+    const CLASS_BLANK: Self::Str<'static>;
     /// `:space:`
-    const CLASS_SPACE: &'static Self::Str;
+    const CLASS_SPACE: Self::Str<'static>;
     /// `:cntrl:`
-    const CLASS_CNTRL: &'static Self::Str;
+    const CLASS_CNTRL: Self::Str<'static>;
     /// `:digit:`
-    const CLASS_DIGIT: &'static Self::Str;
+    const CLASS_DIGIT: Self::Str<'static>;
     /// `:xdigit:`
-    const CLASS_XDIGIT: &'static Self::Str;
+    const CLASS_XDIGIT: Self::Str<'static>;
     /// `:print:`
-    const CLASS_PRINT: &'static Self::Str;
+    const CLASS_PRINT: Self::Str<'static>;
     /// `:graph:`
-    const CLASS_GRAPH: &'static Self::Str;
+    const CLASS_GRAPH: Self::Str<'static>;
     /// `:lower:`
-    const CLASS_LOWER: &'static Self::Str;
+    const CLASS_LOWER: Self::Str<'static>;
     /// `:upper:`
-    const CLASS_UPPER: &'static Self::Str;
+    const CLASS_UPPER: Self::Str<'static>;
     /// `:unibyte:`
-    const CLASS_UNIBYTE: &'static Self::Str;
+    const CLASS_UNIBYTE: Self::Str<'static>;
     /// `:multibyte:`
-    const CLASS_MULTIBYTE: &'static Self::Str;
+    const CLASS_MULTIBYTE: Self::Str<'static>;
     /// `:word:`
-    const CLASS_WORD: &'static Self::Str;
+    const CLASS_WORD: Self::Str<'static>;
     /// `:punct:`
-    const CLASS_PUNCT: &'static Self::Str;
+    const CLASS_PUNCT: Self::Str<'static>;
 
     fn parse_nonnegative_integer<A: Allocator>(s: Vec<Self::Single, A>, alloc: A) -> Option<usize>;
 
@@ -203,7 +208,7 @@ pub mod encoding {
   pub struct ByteEncoding;
   impl LiteralEncoding for ByteEncoding {
     type Single = u8;
-    type Str = [u8];
+    type Str<'a> = &'a [u8];
 
     #[inline(always)]
     fn fmt(s: &u8, f: &mut fmt::Formatter) -> fmt::Result {
@@ -214,9 +219,15 @@ pub mod encoding {
       write!(f, "{}", s)
     }
 
-    fn iter(s: &Self::Str) -> impl Iterator<Item=u8> { s.iter().copied() }
+    fn iter<'a>(s: Self::Str<'a>) -> impl Iterator<Item=u8>+'a { s.iter().copied() }
 
     type String<A: Allocator> = Box<[u8], A>;
+
+    #[inline(always)]
+    fn str_ref<'s, 'a, A: Allocator>(s: &'s Box<[u8], A>) -> &'a [u8]
+    where 's: 'a {
+      s.as_ref()
+    }
 
     #[inline(always)]
     fn coalesce<A: Allocator>(s: Vec<u8, A>, _alloc: A) -> Self::String<A> { s.into_boxed_slice() }
@@ -266,23 +277,23 @@ pub mod encoding {
     const OPEN_SQUARE_BRACE: u8 = b'[';
     const CLOSE_SQUARE_BRACE: u8 = b']';
 
-    const CLASS_ASCII: &'static [u8] = ":ascii:".as_bytes();
-    const CLASS_NONASCII: &'static [u8] = ":nonascii:".as_bytes();
-    const CLASS_ALNUM: &'static [u8] = ":alnum:".as_bytes();
-    const CLASS_ALPHA: &'static [u8] = ":alpha:".as_bytes();
-    const CLASS_BLANK: &'static [u8] = ":blank:".as_bytes();
-    const CLASS_SPACE: &'static [u8] = ":space:".as_bytes();
-    const CLASS_CNTRL: &'static [u8] = ":cntrl:".as_bytes();
-    const CLASS_DIGIT: &'static [u8] = ":digit:".as_bytes();
-    const CLASS_XDIGIT: &'static [u8] = ":xdigit:".as_bytes();
-    const CLASS_PRINT: &'static [u8] = ":print:".as_bytes();
-    const CLASS_GRAPH: &'static [u8] = ":graph:".as_bytes();
-    const CLASS_LOWER: &'static [u8] = ":lower:".as_bytes();
-    const CLASS_UPPER: &'static [u8] = ":upper:".as_bytes();
-    const CLASS_UNIBYTE: &'static [u8] = ":unibyte:".as_bytes();
-    const CLASS_MULTIBYTE: &'static [u8] = ":multibyte:".as_bytes();
-    const CLASS_WORD: &'static [u8] = ":word:".as_bytes();
-    const CLASS_PUNCT: &'static [u8] = ":punct:".as_bytes();
+    const CLASS_ASCII: &'static [u8] = b":ascii:";
+    const CLASS_NONASCII: &'static [u8] = b":nonascii:";
+    const CLASS_ALNUM: &'static [u8] = b":alnum:";
+    const CLASS_ALPHA: &'static [u8] = b":alpha:";
+    const CLASS_BLANK: &'static [u8] = b":blank:";
+    const CLASS_SPACE: &'static [u8] = b":space:";
+    const CLASS_CNTRL: &'static [u8] = b":cntrl:";
+    const CLASS_DIGIT: &'static [u8] = b":digit:";
+    const CLASS_XDIGIT: &'static [u8] = b":xdigit:";
+    const CLASS_PRINT: &'static [u8] = b":print:";
+    const CLASS_GRAPH: &'static [u8] = b":graph:";
+    const CLASS_LOWER: &'static [u8] = b":lower:";
+    const CLASS_UPPER: &'static [u8] = b":upper:";
+    const CLASS_UNIBYTE: &'static [u8] = b":unibyte:";
+    const CLASS_MULTIBYTE: &'static [u8] = b":multibyte:";
+    const CLASS_WORD: &'static [u8] = b":word:";
+    const CLASS_PUNCT: &'static [u8] = b":punct:";
 
     fn parse_nonnegative_integer<A: Allocator>(s: Vec<u8, A>, _alloc: A) -> Option<usize> {
       let s: &str = str::from_utf8(&s[..]).ok()?;
@@ -305,16 +316,22 @@ pub mod encoding {
   pub struct UnicodeEncoding;
   impl LiteralEncoding for UnicodeEncoding {
     type Single = char;
-    type Str = str;
+    type Str<'a> = &'a str;
 
     fn fmt(s: &char, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", s) }
 
-    fn iter(s: &Self::Str) -> impl Iterator<Item=char> { s.chars() }
+    fn iter<'a>(s: Self::Str<'a>) -> impl Iterator<Item=char>+'a { s.chars() }
 
     /* FIXME: use smallvec! */
     type String<A: Allocator> = Box<str, A>;
 
-    #[inline]
+    #[inline(always)]
+    fn str_ref<'s, 'a, A: Allocator>(s: &'s Box<str, A>) -> &'a str
+    where 's: 'a {
+      s.as_ref()
+    }
+
+    #[inline(always)]
     fn coalesce<A: Allocator>(s: Vec<char, A>, alloc: A) -> Self::String<A> {
       crate::util::string::coalesce_utf8_chars(s.into_iter(), alloc)
     }
@@ -379,7 +396,7 @@ pub mod encoding {
     const CLASS_WORD: &'static str = ":word:";
     const CLASS_PUNCT: &'static str = ":punct:";
 
-    #[inline]
+    #[inline(always)]
     fn parse_nonnegative_integer<A: Allocator>(s: Vec<char, A>, alloc: A) -> Option<usize> {
       let s: Box<str, A> = Self::coalesce(s, alloc);
       let n: usize = s.parse().ok()?;
@@ -401,107 +418,117 @@ pub mod encoding {
   pub struct MultibyteEncoding;
   impl LiteralEncoding for MultibyteEncoding {
     /// emacs uses a 22 bit char encoding!
-    type Single = u32;
+    type Single = SingleChar;
     /// However, this is stored in a compressed representation, which may use a
     /// varying number of bits.
-    type Str = [u8];
+    type Str<'a> = PackedString<'a>;
 
-    fn fmt(s: &u32, _f: &mut fmt::Formatter) -> fmt::Result {
-      todo!("multibyte not yet supported: {}", s)
+    #[inline(always)]
+    fn fmt(s: &SingleChar, f: &mut fmt::Formatter) -> fmt::Result {
+      match s.try_as_unicode() {
+        Some(c) => write!(f, "{}", c),
+        None => todo!("formatting multibyte chars is not yet supported: {:?}", s),
+      }
     }
 
-    fn iter(s: &Self::Str) -> impl Iterator<Item=u32> {
-      todo!("multibyte not yet supported: {:?}", s);
-      #[allow(unreachable_code)]
-      [].iter().copied()
+    #[inline(always)]
+    fn iter<'a>(s: Self::Str<'a>) -> impl Iterator<Item=SingleChar>+'a { s.iter_uniform_chars() }
+
+    type String<A: Allocator> = OwnedString<A>;
+
+    #[inline(always)]
+    fn str_ref<'s, 'a, A: Allocator>(s: &'s OwnedString<A>) -> PackedString<'a>
+    where 's: 'a {
+      s.as_packed_str()
     }
 
-    type String<A: Allocator> = Box<[u8], A>;
-
-    fn coalesce<A: Allocator>(s: Vec<u32, A>, _alloc: A) -> Self::String<A> {
-      todo!("multibyte not yet supported: {:?}", s)
+    #[inline(always)]
+    fn coalesce<A: Allocator>(s: Vec<SingleChar, A>, alloc: A) -> Self::String<A> {
+      OwnedString::coalesce_chars(s.into_iter(), alloc)
     }
 
-    fn parse_ascii(c: u32) -> Option<ascii::Char> { todo!("multibyte not yet supported: {:?}", c) }
+    #[inline(always)]
+    fn parse_ascii(c: SingleChar) -> Option<ascii::Char> { c.try_as_ascii() }
 
-    /* FIXME: not supported yet! */
-    const BACKSLASH: u32 = 0;
-    const PIPE: u32 = 0;
+    const BACKSLASH: SingleChar = SingleChar::from_byte(b'\\');
+    const PIPE: SingleChar = SingleChar::from_byte(b'|');
 
-    const COLON: u32 = 0;
-    const QUESTION: u32 = 0;
-    const PLUS: u32 = 0;
-    const STAR: u32 = 0;
-    const CARAT: u32 = 0;
-    const DOLLAR: u32 = 0;
-    const DASH: u32 = 0;
-    const COMMA: u32 = 0;
-    const DOT: u32 = 0;
-    const UNDERSCORE: u32 = 0;
-    const EQUALS: u32 = 0;
+    const COLON: SingleChar = SingleChar::from_byte(b':');
+    const QUESTION: SingleChar = SingleChar::from_byte(b'?');
+    const PLUS: SingleChar = SingleChar::from_byte(b'+');
+    const STAR: SingleChar = SingleChar::from_byte(b'*');
+    const CARAT: SingleChar = SingleChar::from_byte(b'^');
+    const DOLLAR: SingleChar = SingleChar::from_byte(b'$');
+    const DASH: SingleChar = SingleChar::from_byte(b'-');
+    const COMMA: SingleChar = SingleChar::from_byte(b',');
+    const DOT: SingleChar = SingleChar::from_byte(b'.');
+    const UNDERSCORE: SingleChar = SingleChar::from_byte(b'_');
+    const EQUALS: SingleChar = SingleChar::from_byte(b'=');
 
-    const BACKTICK: u32 = 0;
-    const SINGLE_QUOTE: u32 = 0;
+    const BACKTICK: SingleChar = SingleChar::from_byte(b'`');
+    const SINGLE_QUOTE: SingleChar = SingleChar::from_byte(b'\'');
 
-    const SMALL_B: u32 = 0;
-    const BIG_B: u32 = 0;
-    const SMALL_W: u32 = 0;
-    const BIG_W: u32 = 0;
-    const SMALL_S: u32 = 0;
-    const BIG_S: u32 = 0;
-    const SMALL_C: u32 = 0;
-    const BIG_C: u32 = 0;
+    const SMALL_B: SingleChar = SingleChar::from_byte(b'b');
+    const BIG_B: SingleChar = SingleChar::from_byte(b'B');
+    const SMALL_W: SingleChar = SingleChar::from_byte(b'w');
+    const BIG_W: SingleChar = SingleChar::from_byte(b'W');
+    const SMALL_S: SingleChar = SingleChar::from_byte(b's');
+    const BIG_S: SingleChar = SingleChar::from_byte(b'S');
+    const SMALL_C: SingleChar = SingleChar::from_byte(b'c');
+    const BIG_C: SingleChar = SingleChar::from_byte(b'C');
 
-    const OPEN_ANGLE_BRACE: u32 = 0;
-    const CLOSE_ANGLE_BRACE: u32 = 0;
+    const OPEN_ANGLE_BRACE: SingleChar = SingleChar::from_byte(b'<');
+    const CLOSE_ANGLE_BRACE: SingleChar = SingleChar::from_byte(b'>');
 
-    const OPEN_CURLY_BRACE: u32 = 0;
-    const CLOSE_CURLY_BRACE: u32 = 0;
+    const OPEN_CURLY_BRACE: SingleChar = SingleChar::from_byte(b'{');
+    const CLOSE_CURLY_BRACE: SingleChar = SingleChar::from_byte(b'}');
 
-    const OPEN_CIRCLE_BRACE: u32 = 0;
-    const CLOSE_CIRCLE_BRACE: u32 = 0;
+    const OPEN_CIRCLE_BRACE: SingleChar = SingleChar::from_byte(b'(');
+    const CLOSE_CIRCLE_BRACE: SingleChar = SingleChar::from_byte(b')');
 
-    const OPEN_SQUARE_BRACE: u32 = 0;
-    const CLOSE_SQUARE_BRACE: u32 = 0;
+    const OPEN_SQUARE_BRACE: SingleChar = SingleChar::from_byte(b'[');
+    const CLOSE_SQUARE_BRACE: SingleChar = SingleChar::from_byte(b']');
 
-    const CLASS_ASCII: &'static [u8] = ":ascii:".as_bytes();
-    const CLASS_NONASCII: &'static [u8] = ":nonascii:".as_bytes();
-    const CLASS_ALNUM: &'static [u8] = ":alnum:".as_bytes();
-    const CLASS_ALPHA: &'static [u8] = ":alpha:".as_bytes();
-    const CLASS_BLANK: &'static [u8] = ":blank:".as_bytes();
-    const CLASS_SPACE: &'static [u8] = ":space:".as_bytes();
-    const CLASS_CNTRL: &'static [u8] = ":cntrl:".as_bytes();
-    const CLASS_DIGIT: &'static [u8] = ":digit:".as_bytes();
-    const CLASS_XDIGIT: &'static [u8] = ":xdigit:".as_bytes();
-    const CLASS_PRINT: &'static [u8] = ":print:".as_bytes();
-    const CLASS_GRAPH: &'static [u8] = ":graph:".as_bytes();
-    const CLASS_LOWER: &'static [u8] = ":lower:".as_bytes();
-    const CLASS_UPPER: &'static [u8] = ":upper:".as_bytes();
-    const CLASS_UNIBYTE: &'static [u8] = ":unibyte:".as_bytes();
-    const CLASS_MULTIBYTE: &'static [u8] = ":multibyte:".as_bytes();
-    const CLASS_WORD: &'static [u8] = ":word:".as_bytes();
-    const CLASS_PUNCT: &'static [u8] = ":punct:".as_bytes();
+    const CLASS_ASCII: PackedString<'static> = unsafe { PackedString::from_bytes(b":ascii:") };
+    const CLASS_NONASCII: PackedString<'static> =
+      unsafe { PackedString::from_bytes(b":nonascii:") };
+    const CLASS_ALNUM: PackedString<'static> = unsafe { PackedString::from_bytes(b":alnum:") };
+    const CLASS_ALPHA: PackedString<'static> = unsafe { PackedString::from_bytes(b":alpha:") };
+    const CLASS_BLANK: PackedString<'static> = unsafe { PackedString::from_bytes(b":blank:") };
+    const CLASS_SPACE: PackedString<'static> = unsafe { PackedString::from_bytes(b":space:") };
+    const CLASS_CNTRL: PackedString<'static> = unsafe { PackedString::from_bytes(b":cntrl:") };
+    const CLASS_DIGIT: PackedString<'static> = unsafe { PackedString::from_bytes(b":digit:") };
+    const CLASS_XDIGIT: PackedString<'static> = unsafe { PackedString::from_bytes(b":xdigit:") };
+    const CLASS_PRINT: PackedString<'static> = unsafe { PackedString::from_bytes(b":print:") };
+    const CLASS_GRAPH: PackedString<'static> = unsafe { PackedString::from_bytes(b":graph:") };
+    const CLASS_LOWER: PackedString<'static> = unsafe { PackedString::from_bytes(b":lower:") };
+    const CLASS_UPPER: PackedString<'static> = unsafe { PackedString::from_bytes(b":upper:") };
+    const CLASS_UNIBYTE: PackedString<'static> = unsafe { PackedString::from_bytes(b":unibyte:") };
+    const CLASS_MULTIBYTE: PackedString<'static> =
+      unsafe { PackedString::from_bytes(b":multibyte:") };
+    const CLASS_WORD: PackedString<'static> = unsafe { PackedString::from_bytes(b":word:") };
+    const CLASS_PUNCT: PackedString<'static> = unsafe { PackedString::from_bytes(b":punct:") };
 
-    fn parse_nonnegative_integer<A: Allocator>(s: Vec<u32, A>, _alloc: A) -> Option<usize> {
-      todo!("multibyte not yet supported: {:?}", s)
+    #[inline(always)]
+    fn parse_nonnegative_integer<A: Allocator>(s: Vec<SingleChar, A>, alloc: A) -> Option<usize> {
+      let s: OwnedString<A> = Self::coalesce(s, alloc);
+      let s = s.as_packed_str();
+      let s = str::from_utf8(s.as_bytes()).ok()?;
+      let n: usize = s.parse().ok()?;
+      Some(n)
     }
 
-    const ZERO: u32 = 0;
-    const ONE: u32 = 0;
-    const TWO: u32 = 0;
-    const THREE: u32 = 0;
-    const FOUR: u32 = 0;
-    const FIVE: u32 = 0;
-    const SIX: u32 = 0;
-    const SEVEN: u32 = 0;
-    const EIGHT: u32 = 0;
-    const NINE: u32 = 0;
+    const ZERO: SingleChar = SingleChar::from_byte(b'0');
+    const ONE: SingleChar = SingleChar::from_byte(b'1');
+    const TWO: SingleChar = SingleChar::from_byte(b'2');
+    const THREE: SingleChar = SingleChar::from_byte(b'3');
+    const FOUR: SingleChar = SingleChar::from_byte(b'4');
+    const FIVE: SingleChar = SingleChar::from_byte(b'5');
+    const SIX: SingleChar = SingleChar::from_byte(b'6');
+    const SEVEN: SingleChar = SingleChar::from_byte(b'7');
+    const EIGHT: SingleChar = SingleChar::from_byte(b'8');
+    const NINE: SingleChar = SingleChar::from_byte(b'9');
   }
-}
-
-/// stuff to do with the input string provided as the "pattern"
-pub mod pattern {
-  /* TODO: ??? */
 }
 
 pub use emacs_multibyte::util;

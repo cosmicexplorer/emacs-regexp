@@ -57,7 +57,7 @@ extern crate alloc;
 
 use core::{
   alloc::Allocator,
-  ascii, fmt,
+  ascii, cmp, fmt, hash,
   mem::{self, MaybeUninit},
 };
 
@@ -577,17 +577,18 @@ impl<'a> PackedString<'a> {
   pub const fn from_str(s: &'a str) -> Self { Self(s.as_bytes()) }
 
   #[inline(always)]
-  pub fn iter_encoded_chars(&self) -> impl Iterator<Item=EncodedChar>+'_ {
+  pub fn iter_encoded_chars(&self) -> impl Iterator<Item=EncodedChar>+'a {
     let Self(data) = self;
     CodepointIterator { data }
   }
 
   #[inline(always)]
-  pub fn iter_uniform_chars(&self) -> impl Iterator<Item=SingleChar>+'_ {
+  pub fn iter_uniform_chars(&self) -> impl Iterator<Item=SingleChar>+'a {
     self.iter_encoded_chars().map(EncodedChar::into_uniform)
   }
 }
 
+/* TODO: smallvec? */
 #[derive(Clone)]
 #[repr(transparent)]
 pub struct OwnedString<A: Allocator>(Box<[u8], A>);
@@ -646,6 +647,28 @@ where A: Allocator
   pub const fn as_packed_str(&self) -> PackedString {
     unsafe { PackedString::from_bytes(self.0.as_ref()) }
   }
+}
+
+impl<A: Allocator> PartialEq for OwnedString<A> {
+  #[inline]
+  fn eq(&self, other: &Self) -> bool { self.as_packed_str().eq(&other.as_packed_str()) }
+}
+impl<A: Allocator> Eq for OwnedString<A> {}
+
+impl<A: Allocator> cmp::PartialOrd for OwnedString<A> {
+  #[inline]
+  fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+    self.as_packed_str().partial_cmp(&other.as_packed_str())
+  }
+}
+impl<A: Allocator> cmp::Ord for OwnedString<A> {
+  #[inline]
+  fn cmp(&self, other: &Self) -> cmp::Ordering { self.as_packed_str().cmp(&other.as_packed_str()) }
+}
+
+impl<A: Allocator> hash::Hash for OwnedString<A> {
+  #[inline]
+  fn hash<H: hash::Hasher>(&self, state: &mut H) { self.as_packed_str().hash(state); }
 }
 
 #[cfg(test)]
