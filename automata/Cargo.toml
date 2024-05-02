@@ -8,10 +8,14 @@ repository.workspace    = true
 authors.workspace       = true
 
 [dependencies]
+emacs-regexp-syntax.workspace = true
+
 cfg-if.workspace        = true
+displaydoc.workspace    = true
 hashbrown.workspace     = true
 indexmap.workspace      = true
 rustc-hash.workspace    = true
+thiserror.workspace     = true
 xxhash-rust.workspace   = true
 
 [lints]

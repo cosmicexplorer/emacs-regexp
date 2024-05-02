@@ -58,17 +58,17 @@ pub mod encoding {
 
   use crate::alloc_types::*;
 
-  pub trait LiteralRequirements = Eq+Ord+Hash;
+  pub trait ComparisonRequirements = Eq+Ord+Hash;
 
   pub trait LiteralEncoding {
-    type Single: LiteralRequirements+Copy+Clone;
-    type Str<'a>: LiteralRequirements+Copy+Clone;
+    type Single: ComparisonRequirements+Copy+Clone;
+    type Str<'a>: ComparisonRequirements+Copy+Clone;
 
     fn fmt(s: &Self::Single, f: &mut fmt::Formatter) -> fmt::Result;
 
     fn iter<'a>(s: Self::Str<'a>) -> impl Iterator<Item=Self::Single>+'a;
 
-    type String<A: Allocator>: LiteralRequirements;
+    type String<A: Allocator>: ComparisonRequirements;
 
     fn str_ref<'s, 'a, A: Allocator>(s: &'s Self::String<A>) -> Self::Str<'a>
     where 's: 'a;

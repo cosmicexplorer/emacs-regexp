@@ -79,9 +79,12 @@ name = "emacs-regexp-automata"
 version = "0.0.0"
 dependencies = [
  "cfg-if",
+ "displaydoc",
+ "emacs-regexp-syntax",
  "hashbrown",
  "indexmap",
  "rustc-hash",
+ "thiserror",
  "xxhash-rust",
 ]
 
