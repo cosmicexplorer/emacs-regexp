@@ -61,22 +61,22 @@ impl StateShift {
 }
 
 /// NB: We avoid coalescing epsilon transitions at all!
-#[derive(Copy, Clone, Debug)]
-pub enum Transitions<Sym> {
+#[derive(Clone, Debug)]
+pub enum Transitions<Sym, A: Allocator> {
   SingleEpsilon(State),
-  DoubleEpsilon(State, State),
+  MultiEpsilon(Vec<State, A>),
   Symbol(Sym, State),
   Final,
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Node<Sym> {
-  trans: Transitions<Sym>,
+#[derive(Clone, Debug)]
+pub struct Node<Sym, A: Allocator> {
+  trans: Transitions<Sym, A>,
 }
 
 #[derive(Clone)]
 pub struct Universe<Sym, A: Allocator> {
-  states: Vec<Node<Sym>, A>,
+  states: Vec<Node<Sym, A>, A>,
 }
 
 impl<Sym, A> Universe<Sym, A>
@@ -94,19 +94,22 @@ where A: Allocator
   }
 
   #[inline(always)]
-  pub fn first_mut(&mut self) -> Option<&mut Node<Sym>> { self.states.first_mut() }
+  pub fn first_mut(&mut self) -> Option<&mut Node<Sym, A>> { self.states.first_mut() }
+
+  #[inline(always)]
+  pub fn last_mut(&mut self) -> Option<&mut Node<Sym, A>> { self.states.last_mut() }
 
   #[inline(always)]
   pub fn len(&self) -> usize { self.states.len() }
 
   #[inline(always)]
-  pub fn lookup_state(&self, state: State) -> Option<&Node<Sym>> {
+  pub fn lookup_state(&self, state: State) -> Option<&Node<Sym, A>> {
     let State(state) = state;
     self.states.get(state)
   }
 
   #[inline]
-  pub fn insert_new_state(&mut self, node: Node<Sym>) -> State {
+  pub fn insert_new_state(&mut self, node: Node<Sym, A>) -> State {
     let new_state = State(self.states.len());
     self.states.push(node);
     new_state
@@ -125,9 +128,10 @@ where A: Allocator
         Transitions::SingleEpsilon(State(ref mut state)) => {
           *state += shift;
         },
-        Transitions::DoubleEpsilon(State(ref mut state_a), State(ref mut state_b)) => {
-          *state_a += shift;
-          *state_b += shift;
+        Transitions::MultiEpsilon(ref mut to_states) => {
+          to_states.iter_mut().for_each(|State(ref mut to)| {
+            *to += shift;
+          })
         },
         Transitions::Symbol(_, State(ref mut state)) => {
           *state += shift;
@@ -171,27 +175,71 @@ where
         Ok(ret)
       },
       Expr::Backref(_) => Err(NFAConstructionError::Backref),
-      /* Expr::Alternation { cases } => { */
-      /*   let mut ret = Self::new_in(alloc); */
-      /*   let final_state = ret.insert_new_state(Node { */
-      /*     trans: Transitions::Final, */
-      /*   }); */
-      /*   /\* Recursively construct sub-universes. *\/ */
-      /*   let mut sub_universes: Vec<Self, A> = */
-      /*     Vec::with_capacity_in(components.len(), alloc.clone()); */
-      /*   for (i, ref mut o) in components */
-      /*     .into_iter() */
-      /*     .zip(sub_universes.spare_capacity_mut().iter_mut()) */
-      /*   { */
-      /*     o.write(Self::recursively_construct_from_regexp_in( */
-      /*       *i, */
-      /*       alloc.clone(), */
-      /*     )?); */
-      /*   } */
-      /*   unsafe { */
-      /*     sub_universes.set_len(sub_universes.capacity()); */
-      /*   } */
-      /* }, */
+      Expr::Alternation { cases } => {
+        let mut ret = Self::new_in(alloc.clone());
+        let final_state = ret.insert_new_state(Node {
+          trans: Transitions::Final,
+        });
+        let new_final = State(0);
+
+        /* Recursively construct sub-universes. */
+        let mut sub_universes: Vec<Self, A> = Vec::with_capacity_in(cases.len(), alloc.clone());
+        for (i, ref mut o) in cases
+          .into_iter()
+          .zip(sub_universes.spare_capacity_mut().iter_mut())
+        {
+          o.write(Self::recursively_construct_from_regexp_in(
+            *i,
+            alloc.clone(),
+          )?);
+        }
+        unsafe {
+          sub_universes.set_len(sub_universes.capacity());
+        }
+
+        let mut cur_shift = StateShift::zero();
+        /* We have added a new final state. */
+        cur_shift.increase_shift(1);
+        let mut cur_start_index: usize = 0;
+        let mut start_states: Vec<State, A> =
+          Vec::with_capacity_in(sub_universes.len(), alloc.clone());
+        for (ref mut u, ref mut s) in sub_universes
+          .iter_mut()
+          .zip(start_states.spare_capacity_mut().iter_mut())
+        {
+          /* Shift states of each component according to the accumulated length
+           * of prior components. */
+          u.shift_states(cur_shift);
+
+          /* Replace intermediate Final states with an epsilon transition to the new
+           * final state. */
+          let Node { ref mut trans } = u.first_mut().unwrap();
+          if let Transitions::Final = trans {
+            *trans = Transitions::SingleEpsilon(new_final);
+          } else {
+            unreachable!()
+          }
+
+          cur_shift.increase_shift(u.len());
+          /* The start index of the current universe after shifting will be 1 less than
+           * the resulting shift. */
+          cur_start_index += u.len();
+          debug_assert_eq!(cur_start_index, cur_shift.0 - 1);
+          /* Record the shifted start state of this sub-universe. */
+          s.write(State(cur_start_index));
+        }
+        unsafe {
+          start_states.set_len(start_states.capacity());
+        }
+        for Self { states } in sub_universes.into_iter() {
+          ret.states.extend(states);
+        }
+
+        ret.insert_new_state(Node {
+          trans: Transitions::MultiEpsilon(start_states),
+        });
+        Ok(ret)
+      },
       Expr::Concatenation { components } => {
         /* Recursively construct sub-universes. */
         let mut sub_universes: Vec<Self, A> =
@@ -242,7 +290,7 @@ where
         }
         Ok(ret)
       },
-      _ => unreachable!(),
+      _ => todo!("unsupported expr case"),
     }
   }
 
