@@ -46,9 +46,10 @@ mod alloc_types {
   cfg_if::cfg_if! {
     if #[cfg(test)] {
       pub use Box;
+      pub use std::rc;
       pub use Vec;
     } else {
-      pub use ::alloc::{boxed::Box, vec::Vec};
+      pub use ::alloc::{boxed::Box, rc, vec::Vec};
     }
   }
 }
