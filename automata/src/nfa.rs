@@ -68,19 +68,10 @@ mod builder {
 
   struct Universe<Sym, A: Allocator>(Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A>);
 
-  /* impl<Sym, A> Universe<Sym, A> */
-  /* where A: Allocator */
-  /* { */
-  /* pub const fn new_in(alloc: A) -> Self { Self(Vec::new_in(alloc)) } */
-  /* } */
-
   impl<Sym, A> Universe<Sym, A>
   where A: Allocator+Clone
   {
-    pub fn for_single_literal<L>(
-      lit: SingleLiteral<L>,
-      alloc: A,
-    ) -> Result<Self, NFAConstructionError>
+    pub fn for_single_literal<L>(lit: SingleLiteral<L>, alloc: A) -> Self
     where
       L: LiteralEncoding,
       Sym: From<L::Single>,
@@ -99,7 +90,29 @@ mod builder {
       );
       states.push(start);
 
-      Ok(Self(states))
+      Self(states)
+    }
+
+    pub fn for_escaped_literal<L>(lit: Escaped<L>, alloc: A) -> Self
+    where
+      L: LiteralEncoding,
+      Sym: From<L::Single>,
+    {
+      let mut states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+
+      let fin: rc::Rc<RefCell<Node<Sym, A>>, A> =
+        rc::Rc::new_in(RefCell::new(Node(Transition::Final)), alloc.clone());
+      let fin_ref = StateRef(rc::Rc::downgrade(&fin));
+      states.push(fin);
+
+      let Escaped(SingleLiteral(lit)) = lit;
+      let start = rc::Rc::new_in(
+        RefCell::new(Node(Transition::Symbol(lit.into(), fin_ref))),
+        alloc,
+      );
+      states.push(start);
+
+      Self(states)
     }
   }
 }
