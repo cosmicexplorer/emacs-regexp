@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Non-deterministic finite automation structure.
 
-use core::{alloc::Allocator, hash::BuildHasherDefault};
+use core::{alloc::Allocator, fmt, hash::BuildHasherDefault};
 
 use displaydoc::Display;
 use emacs_regexp_syntax::{
@@ -61,7 +61,7 @@ impl StateShift {
 }
 
 /// NB: We avoid coalescing epsilon transitions at all!
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Transitions<Sym, A: Allocator> {
   SingleEpsilon(State),
   MultiEpsilon(Vec<State, A>),
@@ -69,9 +69,76 @@ pub enum Transitions<Sym, A: Allocator> {
   Final,
 }
 
-#[derive(Clone, Debug)]
+impl<Sym, A> PartialEq for Transitions<Sym, A>
+where
+  Sym: PartialEq,
+  A: Allocator,
+{
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::SingleEpsilon(s1), Self::SingleEpsilon(s2)) => s1.eq(s2),
+      (Self::MultiEpsilon(m1), Self::MultiEpsilon(m2)) => m1.eq(m2),
+      (Self::Symbol(y1, s1), Self::Symbol(y2, s2)) => y1.eq(y2) && s1.eq(s2),
+      (Self::Final, Self::Final) => true,
+      _ => false,
+    }
+  }
+}
+
+impl<Sym, A> Eq for Transitions<Sym, A>
+where
+  Sym: PartialEq+Eq,
+  A: Allocator,
+{
+}
+
+impl<Sym, A> fmt::Debug for Transitions<Sym, A>
+where
+  Sym: fmt::Debug,
+  A: Allocator,
+{
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Self::SingleEpsilon(s) => write!(f, "Transitions::SingleEpsilon({s:?})"),
+      Self::MultiEpsilon(m) => write!(f, "Transitions::MultiEpsilon({m:?})"),
+      Self::Symbol(y, s) => write!(f, "Transitions::Symbol({y:?}, {s:?})"),
+      Self::Final => write!(f, "Transitions::Final"),
+    }
+  }
+}
+
+#[derive(Clone)]
 pub struct Node<Sym, A: Allocator> {
   trans: Transitions<Sym, A>,
+}
+
+impl<Sym, A> PartialEq for Node<Sym, A>
+where
+  Sym: PartialEq,
+  A: Allocator,
+{
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self { trans: t1 }, Self { trans: t2 }) => t1.eq(t2),
+    }
+  }
+}
+
+impl<Sym, A> Eq for Node<Sym, A>
+where
+  Sym: PartialEq+Eq,
+  A: Allocator,
+{
+}
+
+impl<Sym, A> fmt::Debug for Node<Sym, A>
+where
+  Sym: fmt::Debug,
+  A: Allocator,
+{
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "Node {{ trans: {:?} }}", &self.trans)
+  }
 }
 
 #[derive(Clone)]
@@ -306,8 +373,82 @@ where
   }
 }
 
-struct M<A>
-where A: Allocator
+impl<Sym, A> PartialEq for Universe<Sym, A>
+where
+  Sym: PartialEq,
+  A: Allocator,
 {
-  m: IndexMap<usize, usize, BuildHasherDefault<FxHasher>, A>,
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self { states: s1 }, Self { states: s2 }) => s1.eq(s2),
+    }
+  }
 }
+
+impl<Sym, A> Eq for Universe<Sym, A>
+where
+  Sym: PartialEq+Eq,
+  A: Allocator,
+{
+}
+
+impl<Sym, A> fmt::Debug for Universe<Sym, A>
+where
+  Sym: fmt::Debug,
+  A: Allocator,
+{
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "Universe {{ states: {:?} }}", &self.states)
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::alloc::Global;
+
+  use emacs_regexp_syntax::{encoding::UnicodeEncoding, parser::parse};
+
+  use super::*;
+
+  #[test]
+  fn compile_single_lit() {
+    let expr = parse::<UnicodeEncoding, _>("a", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transitions::Final
+        },
+        Node {
+          trans: Transitions::Symbol('a', State(0))
+        },
+      ]
+    });
+  }
+
+  #[test]
+  fn compile_concat() {
+    let expr = parse::<UnicodeEncoding, _>("ab", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transitions::Final
+        },
+        Node {
+          trans: Transitions::Symbol('b', State(0))
+        },
+        Node {
+          trans: Transitions::Symbol('a', State(1))
+        },
+      ]
+    });
+  }
+}
+
+/* TODO: NFA parser! */
+/* struct M<A> */
+/* where A: Allocator */
+/* { */
+/* m: IndexMap<usize, usize, BuildHasherDefault<FxHasher>, A>, */
+/* } */
