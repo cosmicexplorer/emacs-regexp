@@ -171,6 +171,27 @@ where
         Ok(ret)
       },
       Expr::Backref(_) => Err(NFAConstructionError::Backref),
+      /* Expr::Alternation { cases } => { */
+      /*   let mut ret = Self::new_in(alloc); */
+      /*   let final_state = ret.insert_new_state(Node { */
+      /*     trans: Transitions::Final, */
+      /*   }); */
+      /*   /\* Recursively construct sub-universes. *\/ */
+      /*   let mut sub_universes: Vec<Self, A> = */
+      /*     Vec::with_capacity_in(components.len(), alloc.clone()); */
+      /*   for (i, ref mut o) in components */
+      /*     .into_iter() */
+      /*     .zip(sub_universes.spare_capacity_mut().iter_mut()) */
+      /*   { */
+      /*     o.write(Self::recursively_construct_from_regexp_in( */
+      /*       *i, */
+      /*       alloc.clone(), */
+      /*     )?); */
+      /*   } */
+      /*   unsafe { */
+      /*     sub_universes.set_len(sub_universes.capacity()); */
+      /*   } */
+      /* }, */
       Expr::Concatenation { components } => {
         /* Recursively construct sub-universes. */
         let mut sub_universes: Vec<Self, A> =
@@ -202,6 +223,8 @@ where
           let next_len: usize = sub_universes.get(i + 1).unwrap().len();
           let cur: &mut Self = sub_universes.get_mut(i).unwrap();
           cur_shift.increase_shift(cur.len());
+          /* Initial states are at the end of each universe. Calculate the initial
+           * state for the next universe, which is at the far end. */
           let next_start = State(cur_shift.0 + next_len - 1);
           /* Replace intermediate Final states with an epsilon transition to
            * the next initial state! */
