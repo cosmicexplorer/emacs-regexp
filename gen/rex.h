@@ -87,4 +87,6 @@ REX_RegexpError rex_execute(const struct REX_Matcher *matcher,
                             const struct REX_CallbackAllocator *_alloc,
                             const struct REX_Input *input);
 
+__attribute__((warn_unused_result)) REX_RegexpError rex_free_matcher(struct REX_Matcher *matcher);
+
 #endif /* rex_h */

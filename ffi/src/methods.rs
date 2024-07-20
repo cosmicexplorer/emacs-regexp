@@ -25,7 +25,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! FFI methods exposed over the C ABI.
 
-use core::{ffi::c_char, mem::MaybeUninit, ptr::NonNull};
+use core::{
+  ffi::c_char,
+  mem::{self, ManuallyDrop, MaybeUninit},
+  ptr::NonNull,
+};
 
 use emacs_regexp_syntax::encoding::MultibyteEncoding;
 
@@ -154,11 +158,19 @@ pub extern "C" fn rex_execute(
   })
 }
 
+#[must_use]
+#[no_mangle]
+pub extern "C" fn rex_free_matcher(matcher: &mut ManuallyDrop<Matcher>) -> RegexpError {
+  let matcher = unsafe { ManuallyDrop::take(matcher) };
+  let (boxed_matcher, pinned_allocator) = unsafe { matcher.into_boxed() };
+  mem::drop(boxed_matcher);
+  mem::drop(pinned_allocator);
+  RegexpError::None
+}
+
 
 #[cfg(test)]
 mod test {
-  use core::mem;
-
   use super::*;
   use crate::objects::ForeignSlice;
 
@@ -186,6 +198,11 @@ mod test {
     let s2 = ForeignSlice::from_data(b"bsdf");
     let i2 = Input { data: s2 };
     assert_eq!(rex_execute(&m, &c, &i2), RegexpError::MatchError);
+
+    {
+      let mut m = ManuallyDrop::new(m);
+      assert_eq!(rex_free_matcher(&mut m), RegexpError::None);
+    }
   }
 
   #[test]

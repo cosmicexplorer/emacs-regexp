@@ -79,6 +79,7 @@ pub struct CallbackAllocator {
   alloc: Option<unsafe extern "C" fn(Option<NonNull<c_void>>, usize) -> Option<NonNull<c_void>>>,
   free: Option<unsafe extern "C" fn(Option<NonNull<c_void>>, NonNull<c_void>) -> ()>,
 }
+static_assertions::assert_eq_size!([usize; 3], CallbackAllocator);
 
 #[cfg(test)]
 impl CallbackAllocator {
@@ -195,7 +196,7 @@ impl Matcher {
   /// The pinned box output must be dropped **AFTER** the boxed `Matcher`! This
   /// is because [`SharedAllocator`] is WILDLY unsafe and simply keeps track of
   /// a single pointer!
-  #[allow(dead_code, clippy::type_complexity)]
+  #[allow(clippy::type_complexity)]
   pub(crate) unsafe fn into_boxed(
     self,
   ) -> (
