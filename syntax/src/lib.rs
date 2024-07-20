@@ -21,7 +21,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 /* Ensure any doctest warnings fails the doctest! */
 #![doc(test(attr(deny(warnings))))]
 #![feature(allocator_api)]
-#![feature(error_in_core)]
 #![feature(trait_alias)]
 #![feature(ascii_char)]
 #![feature(new_uninit)]
