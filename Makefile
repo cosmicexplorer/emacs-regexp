@@ -93,7 +93,7 @@ test-panic: $(PANIC_TEST_OUT)
 	@for f in $^; do \
 		printf '%s\n...\n' "<executing: $${f}>"; \
 		if ./$${f} 2>&1 \
-			| grep -Fq 'ffi/src/methods.rs:32:41: not yet implemented: this always panics!'; then \
+			| grep -Fq 'ffi/src/methods.rs:39:41: panicked: not yet implemented: this always panics!'; then \
 			echo 'success!'; \
 		else echo 'failed!'; exit 1; fi \
 	done >&2

@@ -58,7 +58,7 @@ pub mod literals {
     impl<L> Clone for SingleLiteral<L>
     where L: LiteralEncoding
     {
-      fn clone(&self) -> Self { Self(self.0.clone()) }
+      fn clone(&self) -> Self { Self(self.0) }
     }
 
     impl<L> PartialEq for SingleLiteral<L>
@@ -72,7 +72,7 @@ pub mod literals {
     impl<L> cmp::PartialOrd for SingleLiteral<L>
     where L: LiteralEncoding
     {
-      fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> { self.0.partial_cmp(&other.0) }
+      fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> { Some(self.cmp(other)) }
     }
 
     impl<L> cmp::Ord for SingleLiteral<L>
@@ -147,9 +147,7 @@ pub mod literals {
       impl<L> cmp::PartialOrd for Escaped<L>
       where L: LiteralEncoding
       {
-        fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-          self.0.partial_cmp(&other.0)
-        }
+        fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> { Some(self.cmp(other)) }
       }
 
       impl<L> cmp::Ord for Escaped<L>
@@ -323,7 +321,7 @@ pub mod character_alternatives {
           left: left.clone(),
           right: right.clone(),
         },
-        Self::Class(cc) => Self::Class(cc.clone()),
+        Self::Class(cc) => Self::Class(*cc),
       }
     }
   }
@@ -456,7 +454,7 @@ pub mod character_alternatives {
         elements,
       } = self;
       Self {
-        complemented: complemented.clone(),
+        complemented: *complemented,
         elements: elements.clone(),
       }
     }
@@ -485,9 +483,8 @@ pub mod character_alternatives {
   {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
       write!(f, "[")?;
-      match self.complemented {
-        ComplementBehavior::Complemented => write!(f, "^")?,
-        _ => (),
+      if self.complemented == ComplementBehavior::Complemented {
+        write!(f, "^")?;
       }
       for el in self.elements.iter() {
         write!(f, "{}", el)?;
@@ -558,9 +555,8 @@ pub mod postfix_operators {
   impl fmt::Display for MaybeGreedyOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
       write!(f, "{}", &self.op)?;
-      match self.greediness {
-        GreedyBehavior::NonGreedy => write!(f, "?")?,
-        _ => (),
+      if self.greediness == GreedyBehavior::NonGreedy {
+        write!(f, "?")?;
       }
       Ok(())
     }
@@ -778,7 +774,7 @@ pub mod groups {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
 
-    fn arbitrary_with(_args: ()) -> Self::Strategy { (1u8..=9).prop_map(|i| Self(i)).boxed() }
+    fn arbitrary_with(_args: ()) -> Self::Strategy { (1u8..=9).prop_map(Self).boxed() }
   }
 
   impl fmt::Display for BackrefIndex {
@@ -981,7 +977,7 @@ pub mod expr {
   {
     fn clone(&self) -> Self {
       match self {
-        Self::Prop(cps) => Self::Prop(cps.clone()),
+        Self::Prop(cps) => Self::Prop(*cps),
         Self::Alt(ca) => Self::Alt(ca.clone()),
         Self::Dot => Self::Dot,
       }
@@ -1172,10 +1168,10 @@ pub mod expr {
               .prop_filter_map(
                 "an alternation cannot hand down directly to another alternation without wrapping in e.g. a non-capturing group",
                 |(cases, alloc)| {
-                  if cases.iter().any(|sub_expr| match sub_expr.as_ref() {
-                    &Self::Alternation { .. } => true,
-                    _ => false,
-                  }) {
+                  if cases.iter().any(|sub_expr| matches!(
+                    sub_expr.as_ref(),
+                    &Self::Alternation { .. }
+                  )) {
                     return None;
                   }
                   let mut v = Vec::with_capacity_in(cases.len(), alloc);
@@ -1187,10 +1183,10 @@ pub mod expr {
               .prop_filter_map(
                 "a concatenation cannot hand down directly to an alternation or other concatenation without wrapping in e.g. a non-capturing group",
                 |(components, alloc)| {
-                  if components.iter().any(|sub_expr| match sub_expr.as_ref() {
-                    &Self::Alternation { .. } | &Self::Concatenation { .. } => true,
-                    _ => false,
-                  }) {
+                  if components.iter().any(|sub_expr| matches!(
+                    sub_expr.as_ref(),
+                    &Self::Alternation { .. } | &Self::Concatenation { .. }
+                  )) {
                     return None;
                   }
                   let mut v = Vec::with_capacity_in(components.len(), alloc);
@@ -1213,15 +1209,15 @@ pub mod expr {
       match self {
         Self::SingleLiteral(sl) => Self::SingleLiteral(sl.clone()),
         Self::EscapedLiteral(el) => Self::EscapedLiteral(el.clone()),
-        Self::Backref(br) => Self::Backref(br.clone()),
-        Self::Anchor(a) => Self::Anchor(a.clone()),
+        Self::Backref(br) => Self::Backref(*br),
+        Self::Anchor(a) => Self::Anchor(*a),
         Self::CharSelector(scs) => Self::CharSelector(scs.clone()),
         Self::Postfix { inner, op } => Self::Postfix {
           inner: inner.clone(),
-          op: op.clone(),
+          op: *op,
         },
         Self::Group { kind, inner } => Self::Group {
-          kind: kind.clone(),
+          kind: *kind,
           inner: inner.clone(),
         },
         Self::Alternation { cases } => Self::Alternation {

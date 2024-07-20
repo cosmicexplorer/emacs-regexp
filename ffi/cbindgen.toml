@@ -47,7 +47,7 @@ deprecated              = "__attribute__((deprecated))"
 derive_constructor      = true
 
 [enum]
-# FIXME: this does not appear to work at all?
+# NB: this appears only to work when generating C++: https://github.com/mozilla/cbindgen/blob/316298182ebf508240c95ddf9943556b2fb546e1/src/bindgen/ir/enumeration.rs#L705
 must_use                = "__attribute__((warn_unused))"
 deprecated              = "__attribute__((deprecated))"
 rename_variants         = "QualifiedScreamingSnakeCase"
@@ -55,3 +55,5 @@ rename_variants         = "QualifiedScreamingSnakeCase"
 [ptr]
 # TODO: this works in clang, but gcc has no equivalent!
 # non_null_attribute      = "_Nonnull"
+# This unfortunately doesn't work, as it must be applied to the function definition: https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html#index-nonnull-function-attribute.
+# non_null_attribute      = "__attribute__((nonnull))"

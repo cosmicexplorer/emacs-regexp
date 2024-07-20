@@ -705,7 +705,8 @@ pub mod unanchored {
   /* left_anchored::LeftSingleLiteralContinuation,
    * right_anchored::RightSingleLiteralContinuation, *, */
   /* }; */
-  /* use crate::{IntraComponentInterval, UnanchoredMatchResult, UnanchoredMatcher}; */
+  /* use crate::{IntraComponentInterval, UnanchoredMatchResult,
+   * UnanchoredMatcher}; */
 
   /* #[derive(Debug, Copy, Clone)] */
   /* pub struct UnanchoredSingleLiteralAutomaton<'n> { */

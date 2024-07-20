@@ -65,16 +65,16 @@ pub mod encoding {
 
     fn fmt(s: &Self::Single, f: &mut fmt::Formatter) -> fmt::Result;
 
-    fn iter<'a>(s: Self::Str<'a>) -> impl Iterator<Item=Self::Single>+'a;
+    fn iter(s: Self::Str<'_>) -> impl Iterator<Item=Self::Single>+'_;
 
     type String<A: Allocator>: ComparisonRequirements;
 
     fn str_ref<'s, 'a, A: Allocator>(s: &'s Self::String<A>) -> Self::Str<'a>
     where 's: 'a;
 
-    fn owned_str<'s, A: Allocator>(data: Self::Str<'s>, alloc: A) -> Self::String<A>;
+    fn owned_str<A: Allocator>(data: Self::Str<'_>, alloc: A) -> Self::String<A>;
 
-    fn str_allocator<'s, A: Allocator>(s: &'s Self::String<A>) -> &'s A;
+    fn str_allocator<A: Allocator>(s: &Self::String<A>) -> &A;
 
     fn coalesce<A: Allocator>(s: Vec<Self::Single, A>, alloc: A) -> Self::String<A>;
 
@@ -226,7 +226,7 @@ pub mod encoding {
       write!(f, "{}", s)
     }
 
-    fn iter<'a>(s: Self::Str<'a>) -> impl Iterator<Item=u8>+'a { s.iter().copied() }
+    fn iter(s: Self::Str<'_>) -> impl Iterator<Item=u8>+'_ { s.iter().copied() }
 
     type String<A: Allocator> = Box<[u8], A>;
 
@@ -237,14 +237,14 @@ pub mod encoding {
     }
 
     #[inline(always)]
-    fn owned_str<'s, A: Allocator>(data: &'s [u8], alloc: A) -> Box<[u8], A> {
+    fn owned_str<A: Allocator>(data: &[u8], alloc: A) -> Box<[u8], A> {
       let mut new_data: Box<[MaybeUninit<u8>], A> = Box::new_uninit_slice_in(data.len(), alloc);
       MaybeUninit::copy_from_slice(new_data.as_mut(), data);
       unsafe { new_data.assume_init() }
     }
 
     #[inline(always)]
-    fn str_allocator<'s, A: Allocator>(s: &'s Self::String<A>) -> &'s A { Box::allocator(s) }
+    fn str_allocator<A: Allocator>(s: &Self::String<A>) -> &A { Box::allocator(s) }
 
     #[inline(always)]
     fn coalesce<A: Allocator>(s: Vec<u8, A>, _alloc: A) -> Self::String<A> { s.into_boxed_slice() }
@@ -339,7 +339,7 @@ pub mod encoding {
 
     fn fmt(s: &char, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", s) }
 
-    fn iter<'a>(s: Self::Str<'a>) -> impl Iterator<Item=char>+'a { s.chars() }
+    fn iter(s: Self::Str<'_>) -> impl Iterator<Item=char>+'_ { s.chars() }
 
     /* FIXME: use smallvec! */
     type String<A: Allocator> = Box<str, A>;
@@ -351,7 +351,7 @@ pub mod encoding {
     }
 
     #[inline(always)]
-    fn owned_str<'s, A: Allocator>(data: &'s str, alloc: A) -> Box<str, A> {
+    fn owned_str<A: Allocator>(data: &str, alloc: A) -> Box<str, A> {
       let mut new_data: Box<[MaybeUninit<u8>], A> =
         Box::new_uninit_slice_in(data.as_bytes().len(), alloc);
       MaybeUninit::copy_from_slice(new_data.as_mut(), data.as_bytes());
@@ -359,7 +359,7 @@ pub mod encoding {
     }
 
     #[inline(always)]
-    fn str_allocator<'s, A: Allocator>(s: &'s Self::String<A>) -> &'s A { Box::allocator(s) }
+    fn str_allocator<A: Allocator>(s: &Self::String<A>) -> &A { Box::allocator(s) }
 
     #[inline(always)]
     fn coalesce<A: Allocator>(s: Vec<char, A>, alloc: A) -> Self::String<A> {
@@ -464,7 +464,7 @@ pub mod encoding {
     }
 
     #[inline(always)]
-    fn iter<'a>(s: Self::Str<'a>) -> impl Iterator<Item=SingleChar>+'a { s.iter_uniform_chars() }
+    fn iter(s: Self::Str<'_>) -> impl Iterator<Item=SingleChar>+'_ { s.iter_uniform_chars() }
 
     type String<A: Allocator> = OwnedString<A>;
 
@@ -475,7 +475,7 @@ pub mod encoding {
     }
 
     #[inline(always)]
-    fn owned_str<'s, A: Allocator>(data: PackedString<'s>, alloc: A) -> OwnedString<A> {
+    fn owned_str<A: Allocator>(data: PackedString<'_>, alloc: A) -> OwnedString<A> {
       let mut new_data: Box<[MaybeUninit<u8>], A> =
         Box::new_uninit_slice_in(data.as_bytes().len(), alloc);
       MaybeUninit::copy_from_slice(new_data.as_mut(), data.as_bytes());
@@ -483,7 +483,7 @@ pub mod encoding {
     }
 
     #[inline(always)]
-    fn str_allocator<'s, A: Allocator>(s: &'s Self::String<A>) -> &'s A { s.allocator() }
+    fn str_allocator<A: Allocator>(s: &Self::String<A>) -> &A { s.allocator() }
 
     #[inline(always)]
     fn coalesce<A: Allocator>(s: Vec<SingleChar, A>, alloc: A) -> Self::String<A> {

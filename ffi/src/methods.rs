@@ -16,6 +16,13 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
+/* We require #[must_use] on the extern methods to generate
+ * __attribute__((warn_unused_result)), and we employ #[must_use] on
+ * RegexpError to get a rust-level assurance that the result is used. We
+ * would like to generate a must_use annotation for the generated C bindings
+ * as well, but this appears not to be possible for C: https://github.com/mozilla/cbindgen/blob/316298182ebf508240c95ddf9943556b2fb546e1/src/bindgen/ir/enumeration.rs#L705/. */
+#![allow(clippy::double_must_use)]
+
 //! FFI methods exposed over the C ABI.
 
 use core::{ffi::c_char, mem::MaybeUninit, ptr::NonNull};

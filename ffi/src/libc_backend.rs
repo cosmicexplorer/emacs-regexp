@@ -21,7 +21,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 use core::{
   alloc::{AllocError, Allocator, Layout},
   ffi::c_void,
-  fmt::{self, Write as _},
+  fmt::Write as _,
   mem,
   panic::PanicInfo,
   ptr::NonNull,
@@ -123,7 +123,7 @@ unsafe impl Allocator for LibcAllocator {
 
 fn abort_after_writing(mut s: &[u8]) -> ! {
   loop {
-    if s.len() == 0 {
+    if s.is_empty() {
       /* We are done, now abort. */
       unsafe {
         libc::abort();
@@ -153,16 +153,17 @@ pub fn do_panic(info: &PanicInfo) -> ! {
     let _ = w.write_str("<location unknown>: ");
   }
 
-  if let Some(args) = info.message() {
-    let _ = fmt::write(&mut w, *args);
-  } else {
-    let payload = info
-      .payload()
-      .downcast_ref::<&str>()
-      .map(|s| *s)
-      .unwrap_or("<could not parse panic payload>");
-    let _ = w.write_str(payload);
-  }
+  let _ = write!(&mut w, "panicked: {}", info.message());
+  /* if let Some(args) = info.message() { */
+  /* let _ = fmt::write(&mut w, *args); */
+  /* } else { */
+  /* let payload = info */
+  /* .payload() */
+  /* .downcast_ref::<&str>() */
+  /* .map(|s| *s) */
+  /* .unwrap_or("<could not parse panic payload>"); */
+  /* let _ = w.write_str(payload); */
+  /* } */
   let _ = w.write_char('\n');
 
   abort_after_writing(w.data())

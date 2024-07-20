@@ -35,7 +35,7 @@ static_assertions       = "1.1.0"
 # TODO: enable hw acceleration! see https://docs.rs/xxhash-rust/latest/xxhash_rust/#hw-acceleration
 xxhash-rust             = { version = "0.8.10", features = ["xxh3", "const_xxh3"] }
 
-proptest                = { version = "1.4.0", features = ["alloc", "unstable"] }
+proptest                = { version = "1.5.0", features = ["alloc", "unstable"] }
 proptest-derive         = "0.4.0"
 
 # Packages we've had to hack to get no_std/allocator_api support:
@@ -53,10 +53,12 @@ match_ref_pats          = "allow"
 expl_impl_clone_on_copy = "deny"
 if_not_else             = "deny"
 needless_continue       = "deny"
-unseparated_literal_suffix = "deny"
+separated_literal_suffix = "deny"
+unseparated_literal_suffix = "allow"
 used_underscore_binding = "deny"
 collapsible_else_if     = "allow"
 result_large_err        = "allow"
+missing_transmute_annotations = "allow"
 
 # NB: These apply when building in this workspace, but do *not* apply to any crates outside of
 # this workspace!

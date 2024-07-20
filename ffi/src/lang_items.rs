@@ -26,6 +26,10 @@ use core::{
 use ::alloc::alloc::handle_alloc_error;
 use cfg_if::cfg_if;
 
+/* FIXME: this somehow fails clippy specifically, because the maintainers
+ * don't want to make it possible to solve: https://github.com/rust-lang/rust-clippy/issues/1133.
+ * No, #[cfg(not(test))] does not work. This makes it impossible to run
+ * clippy in CI, sigh. */
 cfg_if! {
   if #[cfg(feature = "libc")] {
     #[panic_handler]

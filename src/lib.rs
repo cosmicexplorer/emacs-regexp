@@ -24,7 +24,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![doc(test(attr(deny(warnings))))]
 #![feature(allocator_api)]
 #![feature(layout_for_ptr)]
-#![feature(error_in_core)]
 #![feature(slice_ptr_get)]
 #![feature(fmt_internals)]
 #![feature(new_uninit)]
@@ -36,7 +35,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #[cfg(not(test))]
 extern crate alloc;
 
-use core::{alloc::Allocator, fmt, mem};
+use core::{alloc::Allocator, cmp, fmt, hash, mem};
 
 use displaydoc::Display;
 pub use emacs_regexp_syntax as syntax;
@@ -71,7 +70,7 @@ pub enum RegexpError {
   MatchError,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone)]
 pub struct Pattern<'n, L: LiteralEncoding> {
   data: L::Str<'n>,
 }
@@ -79,6 +78,27 @@ pub struct Pattern<'n, L: LiteralEncoding> {
 impl<'n, L: LiteralEncoding> Pattern<'n, L> {
   #[inline(always)]
   pub const fn new(data: L::Str<'n>) -> Self { Self { data } }
+}
+
+impl<'n, L: LiteralEncoding> PartialEq for Pattern<'n, L> {
+  fn eq(&self, other: &Self) -> bool { self.data.eq(&other.data) }
+}
+
+impl<'n, L: LiteralEncoding> PartialOrd for Pattern<'n, L> {
+  fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> { Some(self.cmp(other)) }
+}
+
+impl<'n, L: LiteralEncoding> Ord for Pattern<'n, L> {
+  fn cmp(&self, other: &Self) -> cmp::Ordering { self.data.cmp(&other.data) }
+}
+
+impl<'n, L: LiteralEncoding> Eq for Pattern<'n, L> {}
+
+impl<'n, L: LiteralEncoding> hash::Hash for Pattern<'n, L> {
+  fn hash<H>(&self, state: &mut H)
+  where H: hash::Hasher {
+    self.data.hash(state);
+  }
 }
 
 #[derive(Clone)]
@@ -157,7 +177,7 @@ where
   }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone)]
 pub struct Input<'h, L: LiteralEncoding> {
   data: L::Str<'h>,
 }
@@ -165,6 +185,27 @@ pub struct Input<'h, L: LiteralEncoding> {
 impl<'h, L: LiteralEncoding> Input<'h, L> {
   #[inline(always)]
   pub const fn new(data: L::Str<'h>) -> Self { Self { data } }
+}
+
+impl<'h, L: LiteralEncoding> PartialEq for Input<'h, L> {
+  fn eq(&self, other: &Self) -> bool { self.data.eq(&other.data) }
+}
+
+impl<'h, L: LiteralEncoding> Eq for Input<'h, L> {}
+
+impl<'h, L: LiteralEncoding> PartialOrd for Input<'h, L> {
+  fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> { Some(self.cmp(other)) }
+}
+
+impl<'h, L: LiteralEncoding> Ord for Input<'h, L> {
+  fn cmp(&self, other: &Self) -> cmp::Ordering { self.data.cmp(&other.data) }
+}
+
+impl<'h, L: LiteralEncoding> hash::Hash for Input<'h, L> {
+  fn hash<H>(&self, state: &mut H)
+  where H: hash::Hasher {
+    self.data.hash(state);
+  }
 }
 
 pub mod util {

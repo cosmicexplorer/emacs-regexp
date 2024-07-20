@@ -16,6 +16,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
+#![allow(clippy::missing_safety_doc)]
+
 //! FFI structs used to communicate over the C ABI.
 
 use core::{
@@ -61,9 +63,9 @@ pub struct Pattern {
 
 impl Pattern {
   #[inline]
-  pub unsafe fn try_as_pattern<'n>(
-    &'n self,
-  ) -> Result<emacs_regexp::Pattern<'n, MultibyteEncoding>, DecodeError> {
+  pub unsafe fn try_as_pattern(
+    &self,
+  ) -> Result<emacs_regexp::Pattern<'_, MultibyteEncoding>, DecodeError> {
     let Self { data } = self;
     let (s, _) = PackedString::try_from_bytes(data.data())?;
     Ok(emacs_regexp::Pattern::new(s))
@@ -151,7 +153,7 @@ unsafe impl Allocator for SharedAllocator {
   }
   #[inline(always)]
   unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-    (&*self.0).deallocate(ptr, layout)
+    (*self.0).deallocate(ptr, layout)
   }
 }
 
@@ -193,6 +195,7 @@ impl Matcher {
   /// The pinned box output must be dropped **AFTER** the boxed `Matcher`! This
   /// is because [`SharedAllocator`] is WILDLY unsafe and simply keeps track of
   /// a single pointer!
+  #[allow(dead_code, clippy::type_complexity)]
   pub(crate) unsafe fn into_boxed(
     self,
   ) -> (
@@ -223,9 +226,9 @@ pub struct Input {
 
 impl Input {
   #[inline]
-  pub unsafe fn try_as_input<'h>(
-    &'h self,
-  ) -> Result<emacs_regexp::Input<'h, MultibyteEncoding>, DecodeError> {
+  pub unsafe fn try_as_input(
+    &self,
+  ) -> Result<emacs_regexp::Input<'_, MultibyteEncoding>, DecodeError> {
     let Self { data } = self;
     let (s, _) = PackedString::try_from_bytes(data.data())?;
     Ok(emacs_regexp::Input::new(s))

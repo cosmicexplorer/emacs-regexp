@@ -230,12 +230,13 @@ pub struct ParseError {
   pub at: usize,
 }
 
-pub fn parse<'a, L, A>(pattern: L::Str<'a>, alloc: A) -> Result<Expr<L, A>, ParseError>
+pub fn parse<L, A>(pattern: L::Str<'_>, alloc: A) -> Result<Expr<L, A>, ParseError>
 where
   L: LiteralEncoding,
   L::Single: fmt::Debug,
   A: Allocator+Clone,
 {
+  #[allow(clippy::type_complexity)]
   let mut group_context: Vec<(ContextKind, Vec<ContextComponent<L, A>, A>), A> =
     Vec::new_in(alloc.clone());
   group_context.push((ContextKind::TopLevel, Vec::new_in(alloc.clone())));
@@ -555,7 +556,7 @@ where
 
     if previous_was_syntax_code {
       let negation = previous_code_negation.take().unwrap();
-      let ascii_char = L::parse_ascii(character).ok_or_else(|| ParseError {
+      let ascii_char = L::parse_ascii(character).ok_or(ParseError {
         kind: ParseErrorKind::InvalidSyntaxCode,
         at: i,
       })?;
@@ -571,7 +572,7 @@ where
     }
     if previous_was_category_code {
       let negation = previous_code_negation.take().unwrap();
-      let ascii_char = L::parse_ascii(character).ok_or_else(|| ParseError {
+      let ascii_char = L::parse_ascii(character).ok_or(ParseError {
         kind: ParseErrorKind::InvalidCategoryCode,
         at: i,
       })?;
@@ -602,11 +603,10 @@ where
         (None, None) => unreachable!(),
         (None, Some(_)) => unreachable!(),
         (Some(left), None) => {
-          let x: usize =
-            L::parse_nonnegative_integer(left, alloc.clone()).ok_or_else(|| ParseError {
-              kind: ParseErrorKind::InvalidRepeatNumeral,
-              at: i,
-            })?;
+          let x: usize = L::parse_nonnegative_integer(left, alloc.clone()).ok_or(ParseError {
+            kind: ParseErrorKind::InvalidRepeatNumeral,
+            at: i,
+          })?;
           previously_had_postfix = Some(PostfixOp::Repeat(RepeatOperator::Exact(
             ExactRepeatOperator {
               times: RepeatNumeral(x),
@@ -617,18 +617,17 @@ where
           let left: Option<RepeatNumeral> = if left.is_empty() {
             None
           } else {
-            let x: usize =
-              L::parse_nonnegative_integer(left, alloc.clone()).ok_or_else(|| ParseError {
-                kind: ParseErrorKind::InvalidRepeatNumeral,
-                at: i,
-              })?;
+            let x: usize = L::parse_nonnegative_integer(left, alloc.clone()).ok_or(ParseError {
+              kind: ParseErrorKind::InvalidRepeatNumeral,
+              at: i,
+            })?;
             Some(RepeatNumeral(x))
           };
           let right: Option<RepeatNumeral> = if right.is_empty() {
             None
           } else {
             let x: usize =
-              L::parse_nonnegative_integer(right, alloc.clone()).ok_or_else(|| ParseError {
+              L::parse_nonnegative_integer(right, alloc.clone()).ok_or(ParseError {
                 kind: ParseErrorKind::InvalidRepeatNumeral,
                 at: i,
               })?;
@@ -947,7 +946,7 @@ where
       at: out_i,
     });
   }
-  if let Some(_) = currently_within_group_number {
+  if currently_within_group_number.is_some() {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
       at: out_i,
@@ -971,7 +970,7 @@ where
   #[cfg(test)]
   dbg!(&top_level_components);
 
-  if let Some(_) = currently_within_char_alternative {
+  if currently_within_char_alternative.is_some() {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
       at: out_i,
@@ -1019,13 +1018,13 @@ where
       at: out_i,
     });
   }
-  if let Some(_) = currently_second_repeat_arg {
+  if currently_second_repeat_arg.is_some() {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
       at: out_i,
     });
   }
-  if let Some(_) = currently_first_repeat_arg {
+  if currently_first_repeat_arg.is_some() {
     return Err(ParseError {
       kind: ParseErrorKind::InvalidEndState,
       at: out_i,

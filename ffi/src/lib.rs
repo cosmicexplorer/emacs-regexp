@@ -24,8 +24,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(slice_ptr_get)]
 #![feature(new_uninit)]
 #![feature(ptr_as_uninit)]
-#![feature(panic_info_message)]
-#![feature(non_null_convenience)]
 #![feature(alloc_layout_extra)]
 #![feature(maybe_uninit_write_slice)]
 #![feature(let_chains)]

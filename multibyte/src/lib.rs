@@ -300,7 +300,7 @@ impl EncodedChar {
         let (d, rest) = rest.split_first().unwrap();
         let d = *d;
         let w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
-        if w > 0x2DF || w < 0x2C0 {
+        if !(0x2C0..=0x2DF).contains(&w) {
           return Err(DecodeError::InvalidWValue(w));
         }
         let ret = if w < 0x2C2 {
@@ -317,7 +317,7 @@ impl EncodedChar {
         let mut w: u32 = (((d as u32) & 0xC0) << 2) + (c as u32);
         w += ((e as u32) & 0xC0) << 4;
         let w1: u32 = w | (((d as u32) & 0x20) >> 2);
-        if w1 < 0xAE1 || w1 > 0xAEF {
+        if !(0xAE1..=0xAEF).contains(&w1) {
           return Err(DecodeError::InvalidW1Value(w1));
         }
         (Self::Three([c, d, e]), rest)
@@ -331,7 +331,7 @@ impl EncodedChar {
         w += ((e as u32) & 0xC0) << 4;
         w += ((f as u32) & 0xC0) << 6;
         let w2: u32 = w | (((d as u32) & 0x30) >> 3);
-        if w2 < 0x2AF1 || w2 > 0x2AF7 {
+        if !(0x2AF1..=0x2AF7).contains(&w2) {
           return Err(DecodeError::InvalidW2Value(w2));
         }
         (Self::Four([c, d, e, f]), rest)
@@ -347,7 +347,7 @@ impl EncodedChar {
         w += ((f as u32) & 0xC0) << 6;
         let lw: u64 = (w as u64) + (((g as u64) & 0xC0) << 8);
         let w3: u64 = (lw << 24) + ((d as u64) << 16) + ((d as u64) << 8) + (f as u64);
-        if w3 < 0xAAF8888080 || w3 > 0xAAF88FBFBD {
+        if !(0xAAF8888080..=0xAAF88FBFBD).contains(&w3) {
           return Err(DecodeError::InvalidW3Value(w3));
         }
         (Self::Five([c, d, e, f, g]), rest)
@@ -474,6 +474,9 @@ impl SingleChar {
     }
   }
 
+  /// # Safety
+  ///
+  /// `x` MUST be greater than [`Self::MAX_CHAR`]!
   #[inline(always)]
   pub const unsafe fn from_u32(x: u32) -> Self { Self(x) }
 
@@ -575,6 +578,9 @@ static_assertions::assert_eq_size!(PackedString<'static>, (usize, usize));
 pub type Str<'a> = PackedString<'a>;
 
 impl<'a> PackedString<'a> {
+  /// # Safety
+  ///
+  /// `bytes` MUST be a valid multibyte string!
   #[inline(always)]
   pub const unsafe fn from_bytes(bytes: &'a [u8]) -> Self { Self(bytes) }
 
@@ -688,6 +694,9 @@ where A: Allocator
   #[inline(always)]
   pub const fn allocator(&self) -> &A { Box::allocator(&self.0) }
 
+  /// # Safety
+  ///
+  /// `s` MUST be a valid owned multibyte string!
   #[inline(always)]
   pub const unsafe fn from_bytes(s: Box<[u8], A>) -> Self { Self(s) }
 
@@ -705,9 +714,7 @@ impl<A: Allocator> Eq for OwnedString<A> {}
 
 impl<A: Allocator> cmp::PartialOrd for OwnedString<A> {
   #[inline]
-  fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-    self.as_packed_str().partial_cmp(&other.as_packed_str())
-  }
+  fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> { Some(self.cmp(other)) }
 }
 impl<A: Allocator> cmp::Ord for OwnedString<A> {
   #[inline]
@@ -902,6 +909,9 @@ pub mod util {
 
     use crate::alloc_types::*;
 
+    /// # Safety
+    ///
+    /// `b` MUST point to a valid [`str`] allocation!
     #[inline(always)]
     pub unsafe fn box_into_string<A: Allocator>(b: Box<[u8], A>) -> Box<str, A> {
       let (p, alloc): (*mut [u8], A) = Box::into_raw_with_allocator(b);
