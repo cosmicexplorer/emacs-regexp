@@ -571,6 +571,8 @@ where
 {
   fn eq(&self, other: &Self) -> bool {
     match (self, other) {
+      /* TODO: `cargo test -p emacs-regexp-automata` causes an ICE while trying to locate the
+       * PartialEq impl here! */
       (Self::SingleEpsilon(s1), Self::SingleEpsilon(s2)) => s1.eq(s2),
       (Self::MultiEpsilon(m1), Self::MultiEpsilon(m2)) => m1.eq(m2),
       (Self::Symbol(y1, s1), Self::Symbol(y2, s2)) => y1.eq(y2) && s1.eq(s2),
