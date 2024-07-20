@@ -20,12 +20,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 use core::{alloc::Allocator, fmt, hash::BuildHasherDefault, mem, num::NonZeroUsize};
 
-use displaydoc::Display;
 use emacs_regexp_syntax::{ast::expr::Expr, encoding::LiteralEncoding};
 use indexmap::IndexMap;
 use rustc_hash::FxHasher;
 use smallvec::SmallVec;
-use thiserror::Error;
 
 use crate::alloc_types::*;
 
@@ -35,12 +33,6 @@ cfg_if::cfg_if! {
   } else {
     trait MaybeDebug<T> = From<T>;
   }
-}
-
-#[derive(Debug, Display, Error)]
-pub enum NFAConstructionError {
-  /// backref provided in AST
-  Backref,
 }
 
 mod builder {
@@ -56,7 +48,7 @@ mod builder {
   };
   use smallvec::SmallVec;
 
-  use super::{MaybeDebug, NFAConstructionError};
+  use super::MaybeDebug;
   use crate::alloc_types::*;
 
   pub struct StateRef<Sym, A: Allocator>(pub rc::Weak<RefCell<Node<Sym, A>>, A>);
@@ -124,7 +116,7 @@ mod builder {
     Sym: MaybeDebug<Sym>,
     A: Allocator+Clone,
   {
-    fn for_single_literal<L>(lit: SingleLiteral<L>, alloc: A) -> Result<Self, NFAConstructionError>
+    fn for_single_literal<L>(lit: SingleLiteral<L>, alloc: A) -> Self
     where
       L: LiteralEncoding,
       Sym: From<L::Single>,
@@ -146,10 +138,10 @@ mod builder {
       );
       states.push(start);
 
-      Ok(Self(states))
+      Self(states)
     }
 
-    fn for_escaped_literal<L>(lit: Escaped<L>, alloc: A) -> Result<Self, NFAConstructionError>
+    fn for_escaped_literal<L>(lit: Escaped<L>, alloc: A) -> Self
     where
       L: LiteralEncoding,
       Sym: From<L::Single>,
@@ -171,7 +163,7 @@ mod builder {
       );
       states.push(start);
 
-      Ok(Self(states))
+      Self(states)
     }
 
     fn assert_final_state(node: impl ops::Deref<Target=Node<Sym, A>>) {
@@ -181,11 +173,11 @@ mod builder {
       }
     }
 
-    fn for_group(inner: Self, kind: GroupKind, alloc: A) -> Result<Self, NFAConstructionError> {
+    fn for_group(inner: Self, kind: GroupKind, alloc: A) -> Self {
       let maybe_index: Option<NonZeroUsize> = match kind {
         GroupKind::Basic => None,
         /* For non-capturing groups, do not generate any additional bytecode. */
-        GroupKind::Shy => return Ok(inner),
+        GroupKind::Shy => return inner,
         GroupKind::ExplicitlyNumbered(ExplicitGroupIndex(index)) => Some(index),
       };
 
@@ -219,10 +211,10 @@ mod builder {
       );
       all_states.push(st);
 
-      Ok(Self(all_states))
+      Self(all_states)
     }
 
-    fn for_alternations(cases: Vec<Self, A>, alloc: A) -> Result<Self, NFAConstructionError> {
+    fn for_alternations(cases: Vec<Self, A>, alloc: A) -> Self {
       let mut all_states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
 
       let fin: rc::Rc<RefCell<Node<Sym, A>>, A> =
@@ -260,13 +252,10 @@ mod builder {
       );
       all_states.push(st);
 
-      Ok(Self(all_states))
+      Self(all_states)
     }
 
-    fn for_concatenations(
-      components: Vec<Self, A>,
-      alloc: A,
-    ) -> Result<Self, NFAConstructionError> {
+    fn for_concatenations(components: Vec<Self, A>, alloc: A) -> Self {
       let mut all_states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
 
       let fin: rc::Rc<RefCell<Node<Sym, A>>, A> =
@@ -315,13 +304,10 @@ mod builder {
       );
       all_states.push(st);
 
-      Ok(Self(all_states))
+      Self(all_states)
     }
 
-    pub fn recursively_construct_from_regexp<L>(
-      expr: Expr<L, A>,
-      alloc: A,
-    ) -> Result<Self, NFAConstructionError>
+    pub fn recursively_construct_from_regexp<L>(expr: Expr<L, A>, alloc: A) -> Self
     where
       L: LiteralEncoding,
       Sym: From<L::Single>,
@@ -329,22 +315,21 @@ mod builder {
       match expr {
         Expr::SingleLiteral(sl) => Self::for_single_literal(sl, alloc),
         Expr::EscapedLiteral(el) => Self::for_escaped_literal(el, alloc),
-        Expr::Backref(_) => Err(NFAConstructionError::Backref),
         Expr::Group { kind, inner } => {
-          let inner = Self::recursively_construct_from_regexp(*inner, alloc.clone())?;
+          let inner = Self::recursively_construct_from_regexp(*inner, alloc.clone());
           Self::for_group(inner, kind, alloc)
         },
         Expr::Alternation { cases } => {
           let mut sub_universes: Vec<Self, A> = Vec::new_in(alloc.clone());
           for c in cases.into_iter() {
-            sub_universes.push(Self::recursively_construct_from_regexp(*c, alloc.clone())?);
+            sub_universes.push(Self::recursively_construct_from_regexp(*c, alloc.clone()));
           }
           Self::for_alternations(sub_universes, alloc)
         },
         Expr::Concatenation { components } => {
           let mut sub_universes: Vec<Self, A> = Vec::new_in(alloc.clone());
           for c in components.into_iter() {
-            sub_universes.push(Self::recursively_construct_from_regexp(*c, alloc.clone())?);
+            sub_universes.push(Self::recursively_construct_from_regexp(*c, alloc.clone()));
           }
           Self::for_concatenations(sub_universes, alloc)
         },
@@ -470,10 +455,7 @@ where
   Sym: MaybeDebug<Sym>,
   A: Allocator+Clone,
 {
-  fn from_builder(
-    mut builder: builder::Universe<Sym, A>,
-    alloc: A,
-  ) -> Result<Self, NFAConstructionError> {
+  fn from_builder(mut builder: builder::Universe<Sym, A>, alloc: A) -> Self {
     /* First, reverse all the states so they go from left to right. The builder
      * constructs them backwards. */
     builder.0.reverse();
@@ -545,26 +527,21 @@ where
     }
     mem::drop(builder);
 
-    Ok(Self {
+    Self {
       states: all_states.into_boxed_slice(),
-    })
+    }
   }
 
-  pub fn recursively_construct_from_regexp_in<L>(
-    expr: Expr<L, A>,
-    alloc: A,
-  ) -> Result<Self, NFAConstructionError>
+  pub fn recursively_construct_from_regexp_in<L>(expr: Expr<L, A>, alloc: A) -> Self
   where
     L: LiteralEncoding,
     Sym: From<L::Single>,
   {
-    let builder = builder::Universe::recursively_construct_from_regexp(expr, alloc.clone())?;
+    let builder = builder::Universe::recursively_construct_from_regexp(expr, alloc.clone());
     Self::from_builder(builder, alloc)
   }
 
-  pub fn recursively_construct_from_regexp<L>(
-    expr: Expr<L, A>,
-  ) -> Result<Self, NFAConstructionError>
+  pub fn recursively_construct_from_regexp<L>(expr: Expr<L, A>) -> Self
   where
     L: LiteralEncoding,
     Sym: From<L::Single>,
@@ -615,7 +592,7 @@ mod test {
   #[test]
   fn compile_single_lit() {
     let expr = parse::<UnicodeEncoding, _>("a", Global).unwrap();
-    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
     assert_eq!(universe, Universe {
       states: vec![
         Node {
@@ -632,7 +609,7 @@ mod test {
   #[test]
   fn compile_escaped_lit() {
     let expr = parse::<UnicodeEncoding, _>("\\a", Global).unwrap();
-    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
     assert_eq!(universe, Universe {
       states: vec![
         Node {
@@ -649,7 +626,7 @@ mod test {
   #[test]
   fn compile_alt() {
     let expr = parse::<UnicodeEncoding, _>("a\\|b", Global).unwrap();
-    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
     assert_eq!(universe, Universe {
       states: vec![
         Node {
@@ -678,7 +655,7 @@ mod test {
   #[test]
   fn compile_concat() {
     let expr = parse::<UnicodeEncoding, _>("ab", Global).unwrap();
-    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
     assert_eq!(universe, Universe {
       states: vec![
         Node {
@@ -707,7 +684,7 @@ mod test {
   #[test]
   fn compile_group() {
     let expr = parse::<UnicodeEncoding, _>("\\(?:b\\)", Global).unwrap();
-    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
     assert_eq!(universe, Universe {
       states: vec![
         Node {
@@ -721,7 +698,7 @@ mod test {
     });
 
     let expr = parse::<UnicodeEncoding, _>("\\(b\\)", Global).unwrap();
-    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
     assert_eq!(universe, Universe {
       states: vec![
         Node {
@@ -741,7 +718,7 @@ mod test {
     });
 
     let expr = parse::<UnicodeEncoding, _>("\\(?2:b\\)", Global).unwrap();
-    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
     assert_eq!(universe, Universe {
       states: vec![
         Node {
