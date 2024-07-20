@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Non-deterministic finite automation structure.
 
-use core::{alloc::Allocator, fmt, hash::BuildHasherDefault};
+use core::{alloc::Allocator, fmt, hash::BuildHasherDefault, mem};
 
 use displaydoc::Display;
 use emacs_regexp_syntax::{ast::expr::Expr, encoding::LiteralEncoding};
@@ -166,7 +166,7 @@ mod builder {
     }
 
     fn for_alternations(
-      cases: impl IntoIterator<Item=Self>,
+      cases: impl IntoIterator<IntoIter=impl Iterator<Item=Self>+DoubleEndedIterator>,
       alloc: A,
     ) -> Result<Self, NFAConstructionError> {
       let mut all_states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
@@ -180,7 +180,7 @@ mod builder {
        * states to the universe. */
       let mut start_states: Vec<StateRef<Sym, A>, A> = Vec::new_in(alloc.clone());
       let mut end_states: Vec<rc::Weak<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
-      for Self(cur_states) in cases.into_iter() {
+      for Self(cur_states) in cases.into_iter().rev() {
         let cur_st = rc::Rc::downgrade(cur_states.last().unwrap());
         let cur_fin = rc::Rc::downgrade(cur_states.first().unwrap());
         start_states.push(StateRef(cur_st));
@@ -453,6 +453,7 @@ where
       /* Push the new node into the universe. */
       all_states.push(Node { trans });
     }
+    mem::drop(builder);
 
     Ok(Self {
       states: all_states.into_boxed_slice(),
@@ -548,6 +549,35 @@ mod test {
         },
         Node {
           trans: Transition::Symbol('a', State(0))
+        },
+      ]
+      .into_boxed_slice()
+    });
+  }
+
+  #[test]
+  fn compile_alt() {
+    let expr = parse::<UnicodeEncoding, _>("a\\|b", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::Final
+        },
+        Node {
+          trans: Transition::SingleEpsilon(State(0))
+        },
+        Node {
+          trans: Transition::Symbol('b', State(1))
+        },
+        Node {
+          trans: Transition::SingleEpsilon(State(0))
+        },
+        Node {
+          trans: Transition::Symbol('a', State(3))
+        },
+        Node {
+          trans: Transition::MultiEpsilon(vec![State(2), State(4)].into_boxed_slice())
         },
       ]
       .into_boxed_slice()
