@@ -106,8 +106,7 @@ mod builder {
 
   impl<Sym, A> Universe<Sym, A>
   where
-    Sym: fmt::Debug,
-    A: Allocator+Clone,
+    /* Sym: fmt::Debug, */ A: Allocator+Clone
   {
     fn for_single_literal<L>(lit: SingleLiteral<L>, alloc: A) -> Result<Self, NFAConstructionError>
     where
@@ -226,8 +225,6 @@ mod builder {
       for Self(cur_states) in components.into_iter().rev() {
         let cur_st = rc::Rc::downgrade(cur_states.last().unwrap());
         let cur_fin = rc::Rc::downgrade(cur_states.first().unwrap());
-        #[cfg(test)]
-        dbg!((cur_st.upgrade(), cur_fin.upgrade()));
         start_states.push(cur_st);
         end_states.push(cur_fin);
         all_states.extend(cur_states);
@@ -237,8 +234,6 @@ mod builder {
       /* Mutate all end states to point to the start state one *after* them. */
       for (i, cur_end) in end_states.into_iter().enumerate() {
         let cur_end = cur_end.upgrade().unwrap();
-        #[cfg(test)]
-        dbg!((i, &cur_end));
         Self::assert_final_state(cur_end.borrow());
         let mut cur_end = cur_end.borrow_mut();
 
@@ -399,8 +394,7 @@ where A: Allocator
 
 impl<Sym, A> Universe<Sym, A>
 where
-  Sym: fmt::Debug,
-  A: Allocator+Clone,
+  /* Sym: fmt::Debug, */ A: Allocator+Clone
 {
   fn from_builder(
     builder: builder::Universe<Sym, A>,
@@ -529,6 +523,23 @@ mod test {
   #[test]
   fn compile_single_lit() {
     let expr = parse::<UnicodeEncoding, _>("a", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::Final
+        },
+        Node {
+          trans: Transition::Symbol('a', State(0))
+        },
+      ]
+      .into_boxed_slice()
+    });
+  }
+
+  #[test]
+  fn compile_escaped_lit() {
+    let expr = parse::<UnicodeEncoding, _>("\\a", Global).unwrap();
     let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
     assert_eq!(universe, Universe {
       states: vec![
