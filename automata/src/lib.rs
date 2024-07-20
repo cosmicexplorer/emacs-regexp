@@ -33,6 +33,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 #![feature(const_trait_impl)]
 #![feature(effects)]
 #![feature(error_in_core)]
+#![feature(generic_arg_infer)]
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 

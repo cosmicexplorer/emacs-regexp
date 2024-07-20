@@ -85,6 +85,7 @@ dependencies = [
  "indexmap",
  "rustc-hash",
  "smallvec",
+ "static_assertions",
  "thiserror",
  "xxhash-rust",
 ]

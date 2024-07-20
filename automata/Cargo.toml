@@ -16,6 +16,7 @@ hashbrown.workspace     = true
 indexmap.workspace      = true
 rustc-hash.workspace    = true
 smallvec.workspace      = true
+static_assertions.workspace = true
 thiserror.workspace     = true
 xxhash-rust.workspace   = true
 

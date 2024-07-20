@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Non-deterministic finite automation structure.
 
-use core::{alloc::Allocator, fmt, hash::BuildHasherDefault, mem, num::NonZeroUsize};
+use core::{alloc::Allocator, fmt, hash::BuildHasherDefault, mem, num::NonZeroU8};
 
 use emacs_regexp_syntax::{ast::expr::Expr, encoding::LiteralEncoding};
 use indexmap::IndexMap;
@@ -41,7 +41,7 @@ cfg_if::cfg_if! {
 pub struct NegatedSingleChar<Sym>(Sym);
 
 mod builder {
-  use core::{alloc::Allocator, cell::RefCell, fmt, mem, num::NonZeroUsize, ops};
+  use core::{alloc::Allocator, cell::RefCell, fmt, mem, num::NonZeroU8, ops};
 
   use emacs_regexp_syntax::{
     ast::{
@@ -75,9 +75,9 @@ mod builder {
     SingleEpsilon(StateRef<Sym, A>),
     MultiEpsilon(Vec<StateRef<Sym, A>, A>),
     Symbol(Sym, StateRef<Sym, A>),
-    StartGroup(Option<NonZeroUsize>, StateRef<Sym, A>),
+    StartGroup(Option<NonZeroU8>, StateRef<Sym, A>),
     EndGroup(StateRef<Sym, A>),
-    Backref(NonZeroUsize, StateRef<Sym, A>),
+    Backref(NonZeroU8, StateRef<Sym, A>),
     NegatedSingle(NegatedSingleChar<Sym>, StateRef<Sym, A>),
     Final,
   }
@@ -203,8 +203,7 @@ mod builder {
       states.push(fin);
 
       let Backref(BackrefIndex(backref_index)) = backref;
-      let backref_index: usize = backref_index.into();
-      let backref_index = NonZeroUsize::new(backref_index).unwrap();
+      let backref_index = NonZeroU8::new(backref_index).unwrap();
       let start = rc::Rc::new_in(
         RefCell::new(Node(Transition::Backref(backref_index, fin_ref))),
         alloc,
@@ -329,11 +328,14 @@ mod builder {
     }
 
     fn for_group(inner: Self, kind: GroupKind, alloc: A) -> Self {
-      let maybe_index: Option<NonZeroUsize> = match kind {
+      let maybe_index: Option<NonZeroU8> = match kind {
         GroupKind::Basic => None,
         /* For non-capturing groups, do not generate any additional bytecode. */
         GroupKind::Shy => return inner,
-        GroupKind::ExplicitlyNumbered(ExplicitGroupIndex(index)) => Some(index),
+        GroupKind::ExplicitlyNumbered(ExplicitGroupIndex(index)) => {
+          let index: NonZeroU8 = index.try_into().expect("group index out of range");
+          Some(index)
+        },
       };
 
       let mut all_states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
@@ -511,16 +513,18 @@ mod builder {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct State(usize);
+pub struct State(u32);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct GroupIndex(pub NonZeroUsize);
+pub struct GroupIndex(NonZeroU8);
 
 #[derive(Clone)]
 pub enum Transition<Sym, A: Allocator> {
   SingleEpsilon(State),
-  MultiEpsilon(SmallVec<State, A, 2>),
+  /* Any smaller inline value for SmallVec N produces the same size result, as the Vec fallback
+   * requires 3 pointer-sized values + tag. */
+  MultiEpsilon(SmallVec<State, A, 4>),
   Symbol(Sym, State),
   StartGroup(Option<GroupIndex>, State),
   EndGroup(State),
@@ -528,6 +532,8 @@ pub enum Transition<Sym, A: Allocator> {
   NegatedSingle(NegatedSingleChar<Sym>, State),
   Final,
 }
+#[cfg(test)]
+static_assertions::assert_eq_size!(Transition<char, std::alloc::Global>, [u64; 4]);
 
 impl<Sym, A> PartialEq for Transition<Sym, A>
 where
@@ -620,6 +626,7 @@ where A: Allocator
   #[inline(always)]
   pub fn lookup_state(&self, state: State) -> Option<&Node<Sym, A>> {
     let State(state) = state;
+    let state: usize = state.try_into().unwrap();
     self.states.get(state)
   }
 }
@@ -630,13 +637,13 @@ where
   Sym: MaybeDebug<Sym>+Copy,
   A: Allocator+Clone,
 {
-  fn from_builder(mut builder: builder::Universe<Sym, A>, alloc: A) -> Self {
+  fn from_builder(builder: builder::Universe<Sym, A>, alloc: A) -> Self {
+    let builder::Universe(mut universe) = builder;
     /* First, reverse all the states so they go from left to right. The builder
      * constructs them backwards. */
-    builder.0.reverse();
+    universe.reverse();
 
-    let mut all_states: Vec<Node<Sym, A>, A> =
-      Vec::with_capacity_in(builder.0.len(), alloc.clone());
+    let mut all_states: Vec<Node<Sym, A>, A> = Vec::with_capacity_in(universe.len(), alloc.clone());
     let mut state_map: IndexMap<
       *const builder::Node<Sym, A>,
       State,
@@ -645,13 +652,14 @@ where
     > = IndexMap::with_hasher_in(BuildHasherDefault::<FxHasher>::default(), alloc.clone());
 
     /* Associate each node location to an index in the resulting universe. */
-    for (i, node) in builder.0.iter().enumerate() {
+    for (i, node) in universe.iter().enumerate() {
       let p: *const builder::Node<Sym, A> = node.as_ptr().cast_const();
-      assert!(state_map.insert(p, State(i)).is_none());
+      let state_index: u32 = i.try_into().expect("state index was out of bounds");
+      assert!(state_map.insert(p, State(state_index)).is_none());
     }
 
     /* Transform each reference-based node to an index-based node. */
-    for node in builder.0.iter() {
+    for node in universe.iter() {
       let src_p: *const builder::Node<Sym, A> = node.as_ptr().cast_const();
 
       let builder::Node(ref trans) = *node.borrow();
@@ -662,8 +670,8 @@ where
           Transition::SingleEpsilon(*state)
         },
         builder::Transition::MultiEpsilon(state_refs) => {
-          let states: SmallVec<State, A, 2> = {
-            let mut states: SmallVec<State, A, 2> =
+          let states: SmallVec<State, A, _> = {
+            let mut states: SmallVec<State, A, _> =
               SmallVec::with_capacity_in(state_refs.len(), alloc.clone());
             for builder::StateRef(weak) in state_refs.iter() {
               let p: *const builder::Node<Sym, A> = weak.upgrade().unwrap().as_ptr().cast_const();
@@ -704,12 +712,17 @@ where
       };
 
       /* Ensure the resulting state index is what we expect it to be. */
-      let State(src_state_index) = state_map.get(&src_p).unwrap();
-      assert_eq!(*src_state_index, all_states.len());
+      #[cfg(debug_assertions)]
+      {
+        let State(src_state_index) = state_map.get(&src_p).unwrap();
+        let src_state_index = *src_state_index;
+        let src_state_index: usize = src_state_index.try_into().unwrap();
+        assert_eq!(src_state_index, all_states.len());
+      }
       /* Push the new node into the universe. */
       all_states.push(Node { trans });
     }
-    mem::drop(builder);
+    mem::drop(universe);
 
     Self {
       states: all_states.into_boxed_slice(),
@@ -918,7 +931,7 @@ mod test {
     assert_eq!(universe, Universe {
       states: vec![
         Node {
-          trans: Transition::StartGroup(NonZeroUsize::new(2).map(GroupIndex), State(1)),
+          trans: Transition::StartGroup(NonZeroU8::new(2).map(GroupIndex), State(1)),
         },
         Node {
           trans: Transition::Symbol('b', State(2)),
@@ -1052,7 +1065,7 @@ mod test {
     assert_eq!(universe, Universe {
       states: vec![
         Node {
-          trans: Transition::Backref(GroupIndex(NonZeroUsize::new(1).unwrap()), State(1)),
+          trans: Transition::Backref(GroupIndex(NonZeroU8::new(1).unwrap()), State(1)),
         },
         Node {
           trans: Transition::Final,
