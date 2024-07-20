@@ -544,6 +544,11 @@ mod builder {
 #[repr(transparent)]
 pub struct State(u32);
 
+impl State {
+  #[inline(always)]
+  pub const fn zero() -> Self { Self(0) }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct GroupIndex(NonZeroU8);
@@ -571,8 +576,6 @@ where
 {
   fn eq(&self, other: &Self) -> bool {
     match (self, other) {
-      /* TODO: `cargo test -p emacs-regexp-automata` causes an ICE while trying to locate the
-       * PartialEq impl here! */
       (Self::SingleEpsilon(s1), Self::SingleEpsilon(s2)) => s1.eq(s2),
       (Self::MultiEpsilon(m1), Self::MultiEpsilon(m2)) => m1.eq(m2),
       (Self::Symbol(y1, s1), Self::Symbol(y2, s2)) => y1.eq(y2) && s1.eq(s2),
@@ -683,7 +686,7 @@ where
       State,
       BuildHasherDefault<FxHasher>,
       A,
-    > = IndexMap::with_hasher_in(BuildHasherDefault::<FxHasher>::default(), alloc.clone());
+    > = IndexMap::with_hasher_in(Default::default(), alloc.clone());
 
     /* Associate each node location to an index in the resulting universe. */
     for (i, node) in universe.iter().enumerate() {
@@ -1134,10 +1137,3 @@ mod test {
     });
   }
 }
-
-/* TODO: NFA parser! */
-/* struct M<A> */
-/* where A: Allocator */
-/* { */
-/* m: IndexMap<usize, usize, BuildHasherDefault<FxHasher>, A>, */
-/* } */

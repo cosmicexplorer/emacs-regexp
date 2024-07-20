@@ -18,21 +18,40 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Left-to-right evaluation (parsing) methods.
 
-pub trait SimpleEvaluator {
+pub trait SearchState<Eval: ?Sized> {
+  type Args;
+
+  fn create(args: Self::Args) -> Self;
+  fn reset(&mut self, eval: &Eval);
+}
+
+pub trait SimpleEvaluator<Cache: SearchState<Self>> {
   type Tok;
   type Success;
   type Err;
 
-  fn evaluate(&self, tokens: impl Iterator<Item=Self::Tok>) -> Result<Self::Success, Self::Err>;
+  fn create_cache(&self, args: Cache::Args) -> Cache {
+    let mut cache = Cache::create(args);
+    cache.reset(self);
+    cache
+  }
+
+  fn evaluate(
+    &self,
+    cache: &mut Cache,
+    tokens: impl Iterator<Item=Self::Tok>,
+  ) -> Result<Self::Success, Self::Err>;
 }
 
 
 pub mod nfa {
-  use core::alloc::Allocator;
+  use core::{alloc::Allocator, hash::BuildHasherDefault};
 
   use emacs_regexp_syntax::encoding::LiteralEncoding;
+  use indexmap::IndexSet;
+  use rustc_hash::FxHasher;
 
-  use super::SimpleEvaluator;
+  use super::{SearchState, SimpleEvaluator};
   use crate::{alloc_types::*, nfa};
 
   pub struct NFAEvaluator<L: LiteralEncoding, A: Allocator> {
@@ -47,10 +66,46 @@ pub mod nfa {
     pub const fn from_nfa(nfa: nfa::Universe<L::Single, A>) -> Self { Self { nfa } }
   }
 
-  impl<L, A> SimpleEvaluator for NFAEvaluator<L, A>
+  pub struct NFACache<A: Allocator> {
+    current_states: IndexSet<nfa::State, BuildHasherDefault<FxHasher>, A>,
+  }
+
+  impl<A> NFACache<A>
+  where A: Allocator
+  {
+    pub fn new(alloc: A) -> Self
+    where A: Clone {
+      Self {
+        current_states: IndexSet::with_hasher_in(Default::default(), alloc),
+      }
+    }
+
+    pub fn drain(&mut self) -> impl Iterator<Item=nfa::State>+'_ { self.current_states.drain(..) }
+  }
+
+  impl<L, ANFA, ACache> SearchState<NFAEvaluator<L, ANFA>> for NFACache<ACache>
   where
     L: LiteralEncoding,
-    A: Allocator,
+    ANFA: Allocator,
+    ACache: Allocator+Clone,
+  {
+    type Args = ACache;
+
+    fn create(args: Self::Args) -> Self { Self::new(args) }
+
+    fn reset(&mut self, eval: &NFAEvaluator<L, ANFA>) {
+      self.current_states.clear();
+      let initial_state = nfa::State::zero();
+      assert!(eval.nfa.lookup_state(initial_state).is_some());
+      assert!(self.current_states.insert(initial_state));
+    }
+  }
+
+  impl<L, ANFA, ACache> SimpleEvaluator<NFACache<ACache>> for NFAEvaluator<L, ANFA>
+  where
+    L: LiteralEncoding,
+    ANFA: Allocator,
+    ACache: Allocator+Clone,
   {
     type Tok = L::Single;
     type Success = usize;
@@ -58,6 +113,7 @@ pub mod nfa {
 
     fn evaluate(
       &self,
+      _cache: &mut NFACache<ACache>,
       mut tokens: impl Iterator<Item=Self::Tok>,
     ) -> Result<Self::Success, Self::Err> {
       if tokens.next().is_some() {
@@ -81,9 +137,18 @@ pub mod nfa {
       let expr = parse::<UnicodeEncoding, _>(".", Global).unwrap();
       let universe =
         nfa::Universe::<char, Global>::recursively_construct_from_regexp(expr).unwrap();
+
       let eval: NFAEvaluator<UnicodeEncoding, _> = NFAEvaluator::from_nfa(universe);
-      assert_eq!(eval.evaluate(UnicodeEncoding::iter("asdf")), Ok(0));
-      assert_eq!(eval.evaluate(UnicodeEncoding::iter("")), Err(()));
+      let mut cache = eval.create_cache(Global);
+
+      assert_eq!(
+        eval.evaluate(&mut cache, UnicodeEncoding::iter("asdf")),
+        Ok(0)
+      );
+      assert_eq!(
+        eval.evaluate(&mut cache, UnicodeEncoding::iter("")),
+        Err(())
+      );
     }
   }
 }
