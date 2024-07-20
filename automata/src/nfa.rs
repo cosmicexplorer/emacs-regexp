@@ -43,6 +43,7 @@ mod builder {
       expr::Expr,
       groups::{ExplicitGroupIndex, GroupKind},
       literals::single::{escapes::Escaped, SingleLiteral},
+      postfix_operators::{GreedyBehavior, MaybeGreedyOperator, PostfixOp, SimpleOperator},
     },
     encoding::LiteralEncoding,
   };
@@ -172,6 +173,113 @@ mod builder {
       }
     }
 
+    fn for_postfix(inner: Self, op: PostfixOp, alloc: A) -> Self {
+      match op {
+        PostfixOp::Simple(MaybeGreedyOperator { op, greediness }) => {
+          Self::for_simple_postfix(inner, op, greediness, alloc)
+        },
+        PostfixOp::Repeat(_) => todo!("repeat not yet implemented"),
+      }
+    }
+
+    fn for_simple_postfix(
+      inner: Self,
+      op: SimpleOperator,
+      greediness: GreedyBehavior,
+      alloc: A,
+    ) -> Self {
+      match op {
+        /* For the kleene star, compose it as ((<x>)+)?. */
+        SimpleOperator::Star => {
+          let as_plus = Self::for_plus(inner, greediness, alloc.clone());
+          Self::for_question(as_plus, greediness, alloc)
+        },
+        SimpleOperator::Plus => Self::for_plus(inner, greediness, alloc),
+        SimpleOperator::Question => Self::for_question(inner, greediness, alloc),
+      }
+    }
+
+    fn for_plus(inner: Self, greediness: GreedyBehavior, alloc: A) -> Self {
+      let mut all_states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+
+      let fin: rc::Rc<RefCell<Node<Sym, A>>, A> =
+        rc::Rc::new_in(RefCell::new(Node(Transition::Final)), alloc.clone());
+      let fin_ref = StateRef(rc::Rc::downgrade(&fin));
+      all_states.push(fin);
+
+      let Self(inner) = inner;
+      /* Get a reference to the inner start state. */
+      let inner_start = StateRef(rc::Rc::downgrade(inner.last().unwrap()));
+      /* Make the inner end choose to point to either the new final, or the inner
+       * start. */
+      {
+        let mut alternates: Vec<StateRef<Sym, A>, A> = Vec::with_capacity_in(2, alloc.clone());
+        match greediness {
+          /* If greedy, prefer the longer route. */
+          GreedyBehavior::Greedy => {
+            alternates.push(inner_start);
+            alternates.push(fin_ref);
+          },
+          /* If non-greedy, prefer the shorter route. */
+          GreedyBehavior::NonGreedy => {
+            alternates.push(fin_ref);
+            alternates.push(inner_start);
+          },
+        }
+
+        let inner_end = inner.first().unwrap();
+        Self::assert_final_state(inner_end.borrow());
+        let mut inner_end = inner_end.borrow_mut();
+        *inner_end = Node(Transition::MultiEpsilon(alternates));
+      }
+
+      /* Add all inner states to the universe. */
+      all_states.extend(inner);
+
+      Self(all_states)
+    }
+
+    fn for_question(inner: Self, greediness: GreedyBehavior, alloc: A) -> Self {
+      let mut all_states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+
+      let Self(inner) = inner;
+      /* Get references to the inner start and final states. */
+      let inner_end = {
+        let inner_end = inner.first().unwrap();
+        Self::assert_final_state(inner_end.borrow());
+        StateRef(rc::Rc::downgrade(inner_end))
+      };
+      let inner_start = StateRef(rc::Rc::downgrade(inner.last().unwrap()));
+      /* Add all inner states to the universe. */
+      all_states.extend(inner);
+
+      /* Add a start state that goes either directly to the final state or through
+       * the inner start state. */
+      let alternates: Vec<StateRef<Sym, A>, A> = {
+        let mut alternates: Vec<StateRef<Sym, A>, A> = Vec::with_capacity_in(2, alloc.clone());
+        match greediness {
+          /* If greedy, prefer the longer route. */
+          GreedyBehavior::Greedy => {
+            alternates.push(inner_start);
+            alternates.push(inner_end);
+          },
+          /* If non-greedy, prefer the shorter route. */
+          GreedyBehavior::NonGreedy => {
+            alternates.push(inner_end);
+            alternates.push(inner_start);
+          },
+        }
+        alternates
+      };
+      let st: rc::Rc<RefCell<Node<Sym, A>>, A> = rc::Rc::new_in(
+        RefCell::new(Node(Transition::MultiEpsilon(alternates))),
+        alloc,
+      );
+      all_states.push(st);
+
+      Self(all_states)
+    }
+
     fn for_group(inner: Self, kind: GroupKind, alloc: A) -> Self {
       let maybe_index: Option<NonZeroUsize> = match kind {
         GroupKind::Basic => None,
@@ -225,7 +333,8 @@ mod builder {
        * states to the universe. */
       let mut start_states: Vec<StateRef<Sym, A>, A> =
         Vec::with_capacity_in(cases.len(), alloc.clone());
-      let mut end_states: Vec<rc::Weak<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+      let mut end_states: Vec<rc::Weak<RefCell<Node<Sym, A>>, A>, A> =
+        Vec::with_capacity_in(cases.len(), alloc.clone());
       for Self(cur_states) in cases.into_iter().rev() {
         let cur_st = rc::Rc::downgrade(cur_states.last().unwrap());
         let cur_fin = rc::Rc::downgrade(cur_states.first().unwrap());
@@ -314,6 +423,10 @@ mod builder {
       match expr {
         Expr::SingleLiteral(sl) => Self::for_single_literal(sl, alloc),
         Expr::EscapedLiteral(el) => Self::for_escaped_literal(el, alloc),
+        Expr::Postfix { inner, op } => {
+          let inner = Self::recursively_construct_from_regexp(*inner, alloc.clone());
+          Self::for_postfix(inner, op, alloc)
+        },
         Expr::Group { kind, inner } => {
           let inner = Self::recursively_construct_from_regexp(*inner, alloc.clone());
           Self::for_group(inner, kind, alloc)
@@ -607,12 +720,12 @@ mod test {
 
   #[test]
   fn compile_escaped_lit() {
-    let expr = parse::<UnicodeEncoding, _>("\\a", Global).unwrap();
+    let expr = parse::<UnicodeEncoding, _>("\\+", Global).unwrap();
     let universe = Universe::recursively_construct_from_regexp(expr);
     assert_eq!(universe, Universe {
       states: vec![
         Node {
-          trans: Transition::Symbol('a', State(1))
+          trans: Transition::Symbol('+', State(1))
         },
         Node {
           trans: Transition::Final
@@ -728,6 +841,117 @@ mod test {
         },
         Node {
           trans: Transition::EndGroup(State(3)),
+        },
+        Node {
+          trans: Transition::Final,
+        }
+      ]
+      .into_boxed_slice()
+    });
+  }
+
+  #[test]
+  fn test_postfix() {
+    let expr = parse::<UnicodeEncoding, _>("a?", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::MultiEpsilon(smallvec![State(1), State(2)]),
+        },
+        Node {
+          trans: Transition::Symbol('a', State(2)),
+        },
+        Node {
+          trans: Transition::Final,
+        }
+      ]
+      .into_boxed_slice()
+    });
+
+    let expr = parse::<UnicodeEncoding, _>("a??", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::MultiEpsilon(smallvec![State(2), State(1)]),
+        },
+        Node {
+          trans: Transition::Symbol('a', State(2)),
+        },
+        Node {
+          trans: Transition::Final,
+        }
+      ]
+      .into_boxed_slice()
+    });
+
+    let expr = parse::<UnicodeEncoding, _>("a+", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::Symbol('a', State(1)),
+        },
+        Node {
+          trans: Transition::MultiEpsilon(smallvec![State(0), State(2)]),
+        },
+        Node {
+          trans: Transition::Final,
+        }
+      ]
+      .into_boxed_slice()
+    });
+
+    let expr = parse::<UnicodeEncoding, _>("a+?", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::Symbol('a', State(1)),
+        },
+        Node {
+          trans: Transition::MultiEpsilon(smallvec![State(2), State(0)]),
+        },
+        Node {
+          trans: Transition::Final,
+        }
+      ]
+      .into_boxed_slice()
+    });
+
+    let expr = parse::<UnicodeEncoding, _>("a*", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::MultiEpsilon(smallvec![State(1), State(3)]),
+        },
+        Node {
+          trans: Transition::Symbol('a', State(2)),
+        },
+        Node {
+          trans: Transition::MultiEpsilon(smallvec![State(1), State(3)]),
+        },
+        Node {
+          trans: Transition::Final,
+        }
+      ]
+      .into_boxed_slice()
+    });
+
+    let expr = parse::<UnicodeEncoding, _>("a*?", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr);
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::MultiEpsilon(smallvec![State(3), State(1)]),
+        },
+        Node {
+          trans: Transition::Symbol('a', State(2)),
+        },
+        Node {
+          trans: Transition::MultiEpsilon(smallvec![State(3), State(1)]),
         },
         Node {
           trans: Transition::Final,
