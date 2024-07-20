@@ -41,7 +41,7 @@ mod builder {
   use emacs_regexp_syntax::{
     ast::{
       expr::Expr,
-      groups::{ExplicitGroupIndex, GroupKind},
+      groups::{Backref, BackrefIndex, ExplicitGroupIndex, GroupKind},
       literals::single::{escapes::Escaped, SingleLiteral},
       postfix_operators::{GreedyBehavior, MaybeGreedyOperator, PostfixOp, SimpleOperator},
     },
@@ -71,6 +71,7 @@ mod builder {
     Symbol(RefCell<Option<Sym>>, StateRef<Sym, A>),
     StartGroup(Option<NonZeroUsize>, StateRef<Sym, A>),
     EndGroup(StateRef<Sym, A>),
+    Backref(NonZeroUsize, StateRef<Sym, A>),
     Final,
   }
 
@@ -86,6 +87,7 @@ mod builder {
         Self::Symbol(sym, sr) => write!(f, "Transition::Symbol({sym:?}, {sr:?})"),
         Self::StartGroup(i, s) => write!(f, "Transition::StartGroup({i:?}, {s:?})"),
         Self::EndGroup(s) => write!(f, "Transition::EndGroup({s:?})"),
+        Self::Backref(i, s) => write!(f, "Transition::Backref({i:?}, {s:?})"),
         Self::Final => write!(f, "Transition::Final"),
       }
     }
@@ -159,6 +161,26 @@ mod builder {
           RefCell::new(Some(lit.into())),
           fin_ref,
         ))),
+        alloc,
+      );
+      states.push(start);
+
+      Self(states)
+    }
+
+    fn for_backref(backref: Backref, alloc: A) -> Self {
+      let mut states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+
+      let fin: rc::Rc<RefCell<Node<Sym, A>>, A> =
+        rc::Rc::new_in(RefCell::new(Node(Transition::Final)), alloc.clone());
+      let fin_ref = StateRef(rc::Rc::downgrade(&fin));
+      states.push(fin);
+
+      let Backref(BackrefIndex(backref_index)) = backref;
+      let backref_index: usize = backref_index.into();
+      let backref_index = NonZeroUsize::new(backref_index).unwrap();
+      let start = rc::Rc::new_in(
+        RefCell::new(Node(Transition::Backref(backref_index, fin_ref))),
         alloc,
       );
       states.push(start);
@@ -427,6 +449,7 @@ mod builder {
       match expr {
         Expr::SingleLiteral(sl) => Self::for_single_literal(sl, alloc),
         Expr::EscapedLiteral(el) => Self::for_escaped_literal(el, alloc),
+        Expr::Backref(br) => Self::for_backref(br, alloc),
         Expr::Postfix { inner, op } => {
           let inner = Self::recursively_construct_from_regexp(*inner, alloc.clone());
           Self::for_postfix(inner, op, alloc)
@@ -462,15 +485,16 @@ pub struct State(usize);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct ExplicitGroupIndex(pub NonZeroUsize);
+pub struct GroupIndex(pub NonZeroUsize);
 
 #[derive(Clone)]
 pub enum Transition<Sym, A: Allocator> {
   SingleEpsilon(State),
   MultiEpsilon(SmallVec<State, A, 2>),
   Symbol(Sym, State),
-  StartGroup(Option<ExplicitGroupIndex>, State),
+  StartGroup(Option<GroupIndex>, State),
   EndGroup(State),
+  Backref(GroupIndex, State),
   Final,
 }
 
@@ -486,6 +510,7 @@ where
       (Self::Symbol(y1, s1), Self::Symbol(y2, s2)) => y1.eq(y2) && s1.eq(s2),
       (Self::StartGroup(i1, s1), Self::StartGroup(i2, s2)) => i1.eq(i2) && s1.eq(s2),
       (Self::EndGroup(s1), Self::EndGroup(s2)) => s1.eq(s2),
+      (Self::Backref(i1, s1), Self::Backref(i2, s2)) => i1.eq(i2) && s1.eq(s2),
       (Self::Final, Self::Final) => true,
       _ => false,
     }
@@ -511,6 +536,7 @@ where
       Self::Symbol(y, s) => write!(f, "Transition::Symbol({y:?}, {s:?})"),
       Self::StartGroup(i, s) => write!(f, "Transition::StartGroup({i:?}, {s:?})"),
       Self::EndGroup(s) => write!(f, "Transition::EndGroup({s:?})"),
+      Self::Backref(i, s) => write!(f, "Transition::Backref({i:?}, {s:?})"),
       Self::Final => write!(f, "Transition::Final"),
     }
   }
@@ -622,7 +648,7 @@ where
           Transition::Symbol(sym, *state)
         },
         builder::Transition::StartGroup(maybe_index, builder::StateRef(weak)) => {
-          let maybe_index = maybe_index.map(ExplicitGroupIndex);
+          let maybe_index = maybe_index.map(GroupIndex);
           let p: *const builder::Node<Sym, A> = weak.upgrade().unwrap().as_ptr().cast_const();
           let state = state_map.get(&p).unwrap();
           Transition::StartGroup(maybe_index, *state)
@@ -631,6 +657,11 @@ where
           let p: *const builder::Node<Sym, A> = weak.upgrade().unwrap().as_ptr().cast_const();
           let state = state_map.get(&p).unwrap();
           Transition::EndGroup(*state)
+        },
+        builder::Transition::Backref(backref_index, builder::StateRef(weak)) => {
+          let p: *const builder::Node<Sym, A> = weak.upgrade().unwrap().as_ptr().cast_const();
+          let state = state_map.get(&p).unwrap();
+          Transition::Backref(GroupIndex(*backref_index), *state)
         },
         builder::Transition::Final => Transition::Final,
       };
@@ -850,7 +881,7 @@ mod test {
     assert_eq!(universe, Universe {
       states: vec![
         Node {
-          trans: Transition::StartGroup(NonZeroUsize::new(2).map(ExplicitGroupIndex), State(1)),
+          trans: Transition::StartGroup(NonZeroUsize::new(2).map(GroupIndex), State(1)),
         },
         Node {
           trans: Transition::Symbol('b', State(2)),
@@ -968,6 +999,23 @@ mod test {
         },
         Node {
           trans: Transition::MultiEpsilon(smallvec![State(3), State(1)]),
+        },
+        Node {
+          trans: Transition::Final,
+        }
+      ]
+      .into_boxed_slice()
+    });
+  }
+
+  #[test]
+  fn test_backref() {
+    let expr = parse::<UnicodeEncoding, _>("\\1", Global).unwrap();
+    let universe = Universe::<char, _>::recursively_construct_from_regexp(expr);
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::Backref(GroupIndex(NonZeroUsize::new(1).unwrap()), State(1)),
         },
         Node {
           trans: Transition::Final,
