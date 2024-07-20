@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Non-deterministic finite automation structure.
 
-use core::{alloc::Allocator, fmt, hash::BuildHasherDefault, mem};
+use core::{alloc::Allocator, fmt, hash::BuildHasherDefault, mem, num::NonZeroUsize};
 
 use displaydoc::Display;
 use emacs_regexp_syntax::{ast::expr::Expr, encoding::LiteralEncoding};
@@ -43,11 +43,12 @@ pub enum NFAConstructionError {
 }
 
 mod builder {
-  use core::{alloc::Allocator, cell::RefCell, fmt, mem, ops};
+  use core::{alloc::Allocator, cell::RefCell, fmt, mem, num::NonZeroUsize, ops};
 
   use emacs_regexp_syntax::{
     ast::{
       expr::Expr,
+      groups::{ExplicitGroupIndex, GroupKind},
       literals::single::{escapes::Escaped, SingleLiteral},
     },
     encoding::LiteralEncoding,
@@ -74,6 +75,8 @@ mod builder {
     SingleEpsilon(StateRef<Sym, A>),
     MultiEpsilon(Vec<StateRef<Sym, A>, A>),
     Symbol(RefCell<Option<Sym>>, StateRef<Sym, A>),
+    StartGroup(Option<NonZeroUsize>, StateRef<Sym, A>),
+    EndGroup(StateRef<Sym, A>),
     Final,
   }
 
@@ -84,9 +87,11 @@ mod builder {
   {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
       match self {
-        Self::SingleEpsilon(sr) => write!(f, "Transition::SingleEpsilon({:?})", sr),
-        Self::MultiEpsilon(m) => write!(f, "Transition::MultiEpsilon({:?})", m),
-        Self::Symbol(sym, sr) => write!(f, "Transition::Symbol({:?}, {:?})", sym, sr),
+        Self::SingleEpsilon(sr) => write!(f, "Transition::SingleEpsilon({sr:?})"),
+        Self::MultiEpsilon(m) => write!(f, "Transition::MultiEpsilon({m:?})"),
+        Self::Symbol(sym, sr) => write!(f, "Transition::Symbol({sym:?}, {sr:?})"),
+        Self::StartGroup(i, s) => write!(f, "Transition::StartGroup({i:?}, {s:?})"),
+        Self::EndGroup(s) => write!(f, "Transition::EndGroup({s:?})"),
         Self::Final => write!(f, "Transition::Final"),
       }
     }
@@ -174,6 +179,40 @@ mod builder {
       }
     }
 
+    fn for_group(inner: Self, kind: GroupKind, alloc: A) -> Result<Self, NFAConstructionError> {
+      let maybe_index: Option<NonZeroUsize> = match kind {
+        GroupKind::Basic => None,
+        /* For non-capturing groups, do not generate any additional bytecode. */
+        GroupKind::Shy => return Ok(inner),
+        GroupKind::ExplicitlyNumbered(ExplicitGroupIndex(index)) => Some(index),
+      };
+
+      let mut all_states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+
+      let fin: rc::Rc<RefCell<Node<Sym, A>>, A> =
+        rc::Rc::new_in(RefCell::new(Node(Transition::Final)), alloc.clone());
+      let fin_ref = StateRef(rc::Rc::downgrade(&fin));
+      all_states.push(fin);
+
+      /* Make the end point to our newly allocated final state, closing the group
+       * as we do so. */
+      let inner_end = inner.0.first().unwrap();
+      Self::assert_final_state(inner_end.borrow());
+      let mut inner_end = inner_end.borrow_mut();
+      *inner_end = Node(Transition::EndGroup(fin_ref));
+
+      /* Make a new start which points to the internal start node, opening the
+       * group as we do so. */
+      let inner_start = StateRef(rc::Rc::downgrade(inner.0.last().unwrap()));
+      let st: rc::Rc<RefCell<Node<Sym, A>>, A> = rc::Rc::new_in(
+        RefCell::new(Node(Transition::StartGroup(maybe_index, inner_start))),
+        alloc,
+      );
+      all_states.push(st);
+
+      Ok(Self(all_states))
+    }
+
     fn for_alternations(
       cases: impl IntoIterator<IntoIter=impl Iterator<Item=Self>+DoubleEndedIterator>,
       alloc: A,
@@ -204,8 +243,8 @@ mod builder {
         let mut cur_end = cur_end.borrow_mut();
         *cur_end = Node(Transition::SingleEpsilon(fin_ref.clone()));
       }
-      /* Reverse the start states so they come out in the original order from
-       * from_builder(). */
+      /* Reverse the start states so the cases come out in the original order after
+       * being reversed again in from_builder(). */
       start_states.reverse();
       /* Create a new start state with edges to the start of each case. */
       let st: rc::Rc<RefCell<Node<Sym, A>>, A> = rc::Rc::new_in(
@@ -284,6 +323,10 @@ mod builder {
         Expr::SingleLiteral(sl) => Self::for_single_literal(sl, alloc),
         Expr::EscapedLiteral(el) => Self::for_escaped_literal(el, alloc),
         Expr::Backref(_) => Err(NFAConstructionError::Backref),
+        Expr::Group { kind, inner } => {
+          let inner = Self::recursively_construct_from_regexp(*inner, alloc.clone())?;
+          Self::for_group(inner, kind, alloc)
+        },
         Expr::Alternation { cases } => {
           let mut sub_universes: Vec<Self, A> = Vec::new_in(alloc.clone());
           for c in cases.into_iter() {
@@ -309,11 +352,17 @@ mod builder {
 #[repr(transparent)]
 pub struct State(usize);
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct ExplicitGroupIndex(pub NonZeroUsize);
+
 #[derive(Clone)]
 pub enum Transition<Sym, A: Allocator> {
   SingleEpsilon(State),
   MultiEpsilon(Box<[State], A>),
   Symbol(Sym, State),
+  StartGroup(Option<ExplicitGroupIndex>, State),
+  EndGroup(State),
   Final,
 }
 
@@ -327,6 +376,8 @@ where
       (Self::SingleEpsilon(s1), Self::SingleEpsilon(s2)) => s1.eq(s2),
       (Self::MultiEpsilon(m1), Self::MultiEpsilon(m2)) => m1.eq(m2),
       (Self::Symbol(y1, s1), Self::Symbol(y2, s2)) => y1.eq(y2) && s1.eq(s2),
+      (Self::StartGroup(i1, s1), Self::StartGroup(i2, s2)) => i1.eq(i2) && s1.eq(s2),
+      (Self::EndGroup(s1), Self::EndGroup(s2)) => s1.eq(s2),
       (Self::Final, Self::Final) => true,
       _ => false,
     }
@@ -350,6 +401,8 @@ where
       Self::SingleEpsilon(s) => write!(f, "Transition::SingleEpsilon({s:?})"),
       Self::MultiEpsilon(m) => write!(f, "Transition::MultiEpsilon({m:?})"),
       Self::Symbol(y, s) => write!(f, "Transition::Symbol({y:?}, {s:?})"),
+      Self::StartGroup(i, s) => write!(f, "Transition::StartGroup({i:?}, {s:?})"),
+      Self::EndGroup(s) => write!(f, "Transition::EndGroup({s:?})"),
       Self::Final => write!(f, "Transition::Final"),
     }
   }
@@ -461,6 +514,17 @@ where
           let state = state_map.get(&p).unwrap();
           let sym: Sym = sym.borrow_mut().take().unwrap();
           Transition::Symbol(sym, *state)
+        },
+        builder::Transition::StartGroup(maybe_index, builder::StateRef(weak)) => {
+          let maybe_index = maybe_index.map(ExplicitGroupIndex);
+          let p: *const builder::Node<Sym, A> = weak.upgrade().unwrap().as_ptr().cast_const();
+          let state = state_map.get(&p).unwrap();
+          Transition::StartGroup(maybe_index, *state)
+        },
+        builder::Transition::EndGroup(builder::StateRef(weak)) => {
+          let p: *const builder::Node<Sym, A> = weak.upgrade().unwrap().as_ptr().cast_const();
+          let state = state_map.get(&p).unwrap();
+          Transition::EndGroup(*state)
         },
         builder::Transition::Final => Transition::Final,
       };
@@ -629,6 +693,54 @@ mod test {
       ]
       .into_boxed_slice()
     });
+  }
+
+  #[test]
+  fn compile_group() {
+    let expr = parse::<UnicodeEncoding, _>("\\(?:b\\)", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::Symbol('b', State(1)),
+        },
+        Node {
+          trans: Transition::Final,
+        }
+      ]
+      .into_boxed_slice()
+    });
+
+    /* let expr = parse::<UnicodeEncoding, _>("\\(b\\)", Global).unwrap(); */
+    /* let universe =
+     * Universe::recursively_construct_from_regexp(expr).unwrap(); */
+    /* assert_eq!(universe, Universe { */
+    /* states: vec![ */
+    /* Node { */
+    /* trans: Transition::SingleEpsilon(State(1)), */
+    /* }, */
+    /* Node { */
+    /* trans: Transition::StartGroup(None, State(2)), */
+    /* }, */
+    /* Node { */
+    /* trans: Transition::Symbol('b', State(3)), */
+    /* }, */
+    /* Node { */
+    /* trans: Transition::SingleEpsilon(State(4)), */
+    /* }, */
+    /* Node { */
+    /* trans: Transition::SingleEpsilon(State(5)), */
+    /* }, */
+    /* Node { */
+    /* trans: Transition::Final, */
+    /* } */
+    /* ] */
+    /* .into_boxed_slice() */
+    /* }); */
+
+    /* let expr = parse::<UnicodeEncoding, _>("(?2:b)", Global).unwrap(); */
+    /* let universe =
+     * Universe::recursively_construct_from_regexp(expr).unwrap(); */
   }
 }
 
