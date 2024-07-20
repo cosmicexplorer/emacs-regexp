@@ -46,7 +46,6 @@ mod builder {
     },
     encoding::LiteralEncoding,
   };
-  use smallvec::SmallVec;
 
   use super::MaybeDebug;
   use crate::alloc_types::*;
@@ -67,7 +66,7 @@ mod builder {
 
   pub enum Transition<Sym, A: Allocator> {
     SingleEpsilon(StateRef<Sym, A>),
-    MultiEpsilon(SmallVec<StateRef<Sym, A>, A, 2>),
+    MultiEpsilon(Vec<StateRef<Sym, A>, A>),
     Symbol(RefCell<Option<Sym>>, StateRef<Sym, A>),
     StartGroup(Option<NonZeroUsize>, StateRef<Sym, A>),
     EndGroup(StateRef<Sym, A>),
@@ -224,8 +223,8 @@ mod builder {
 
       /* Get references to all start and end states of each case, and add internal
        * states to the universe. */
-      let mut start_states: SmallVec<StateRef<Sym, A>, A, 2> =
-        SmallVec::with_capacity_in(cases.len(), alloc.clone());
+      let mut start_states: Vec<StateRef<Sym, A>, A> =
+        Vec::with_capacity_in(cases.len(), alloc.clone());
       let mut end_states: Vec<rc::Weak<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
       for Self(cur_states) in cases.into_iter().rev() {
         let cur_st = rc::Rc::downgrade(cur_states.last().unwrap());
@@ -333,7 +332,7 @@ mod builder {
           }
           Self::for_concatenations(sub_universes, alloc)
         },
-        _ => todo!(),
+        _ => todo!("expr type not yet implemented"),
       }
     }
   }
