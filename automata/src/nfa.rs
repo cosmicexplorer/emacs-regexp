@@ -469,10 +469,11 @@ mod builder {
       Self(all_states)
     }
 
-    pub fn recursively_construct_from_regexp<L>(expr: Expr<L, A>, alloc: A) -> Self
+    pub fn recursively_construct_from_regexp<L, AExpr>(expr: Expr<L, AExpr>, alloc: A) -> Self
     where
       L: LiteralEncoding,
       Sym: From<L::Single>,
+      AExpr: Allocator,
     {
       match expr {
         Expr::SingleLiteral(sl) => Self::for_single_literal(sl, alloc),
@@ -660,6 +661,7 @@ where
 
     /* Transform each reference-based node to an index-based node. */
     for node in universe.iter() {
+      #[cfg(debug_assertions)]
       let src_p: *const builder::Node<Sym, A> = node.as_ptr().cast_const();
 
       let builder::Node(ref trans) = *node.borrow();
@@ -729,19 +731,21 @@ where
     }
   }
 
-  pub fn recursively_construct_from_regexp_in<L>(expr: Expr<L, A>, alloc: A) -> Self
+  pub fn recursively_construct_from_regexp_in<L, AExpr>(expr: Expr<L, AExpr>, alloc: A) -> Self
   where
     L: LiteralEncoding,
     Sym: From<L::Single>,
+    AExpr: Allocator,
   {
     let builder = builder::Universe::recursively_construct_from_regexp(expr, alloc.clone());
     Self::from_builder(builder, alloc)
   }
 
-  pub fn recursively_construct_from_regexp<L>(expr: Expr<L, A>) -> Self
+  pub fn recursively_construct_from_regexp<L, AExpr>(expr: Expr<L, AExpr>) -> Self
   where
     L: LiteralEncoding,
     Sym: From<L::Single>,
+    AExpr: Allocator,
     A: Default,
   {
     Self::recursively_construct_from_regexp_in(expr, A::default())
