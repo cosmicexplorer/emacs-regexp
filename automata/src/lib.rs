@@ -59,6 +59,7 @@ pub mod hashgrams;
 pub mod litblock;
 pub mod literal;
 pub mod nfa;
+pub mod simple_eval;
 pub mod trie;
 
 pub mod input {
