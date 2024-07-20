@@ -42,7 +42,7 @@ pub enum NFAConstructionError {
 
 
 mod builder {
-  use core::{alloc::Allocator, cell::RefCell};
+  use core::{alloc::Allocator, cell::RefCell, mem, ops};
 
   use emacs_regexp_syntax::{
     ast::{
@@ -56,6 +56,12 @@ mod builder {
   use crate::alloc_types::*;
 
   struct StateRef<Sym, A: Allocator>(rc::Weak<RefCell<Node<Sym, A>>, A>);
+
+  impl<Sym, A> Clone for StateRef<Sym, A>
+  where A: Allocator+Clone
+  {
+    fn clone(&self) -> Self { Self(self.0.clone()) }
+  }
 
   enum Transition<Sym, A: Allocator> {
     SingleEpsilon(StateRef<Sym, A>),
@@ -71,7 +77,7 @@ mod builder {
   impl<Sym, A> Universe<Sym, A>
   where A: Allocator+Clone
   {
-    pub fn for_single_literal<L>(lit: SingleLiteral<L>, alloc: A) -> Self
+    fn for_single_literal<L>(lit: SingleLiteral<L>, alloc: A) -> Result<Self, NFAConstructionError>
     where
       L: LiteralEncoding,
       Sym: From<L::Single>,
@@ -90,10 +96,10 @@ mod builder {
       );
       states.push(start);
 
-      Self(states)
+      Ok(Self(states))
     }
 
-    pub fn for_escaped_literal<L>(lit: Escaped<L>, alloc: A) -> Self
+    fn for_escaped_literal<L>(lit: Escaped<L>, alloc: A) -> Result<Self, NFAConstructionError>
     where
       L: LiteralEncoding,
       Sym: From<L::Single>,
@@ -112,7 +118,139 @@ mod builder {
       );
       states.push(start);
 
-      Self(states)
+      Ok(Self(states))
+    }
+
+    fn assert_final_state(node: impl ops::Deref<Target=Node<Sym, A>>) {
+      match *node {
+        Node(Transition::Final) => (),
+        _ => unreachable!("expected final state was not final"),
+      }
+    }
+
+    fn for_alternations(
+      cases: impl IntoIterator<Item=Self>,
+      alloc: A,
+    ) -> Result<Self, NFAConstructionError> {
+      let mut all_states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+
+      let fin: rc::Rc<RefCell<Node<Sym, A>>, A> =
+        rc::Rc::new_in(RefCell::new(Node(Transition::Final)), alloc.clone());
+      let fin_ref = StateRef(rc::Rc::downgrade(&fin));
+      all_states.push(fin);
+
+      /* Get references to all start and end states of each case, and add internal
+       * states to the universe. */
+      let mut start_states: Vec<StateRef<Sym, A>, A> = Vec::new_in(alloc.clone());
+      let mut end_states: Vec<rc::Weak<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+      for Self(cur_states) in cases.into_iter() {
+        let cur_st = rc::Rc::downgrade(cur_states.first().unwrap());
+        let cur_fin = rc::Rc::downgrade(cur_states.last().unwrap());
+        start_states.push(StateRef(cur_st));
+        end_states.push(cur_fin);
+        all_states.extend(cur_states);
+      }
+
+      /* Mutate all end states to point to the new final state. */
+      for cur_end in end_states.into_iter() {
+        let cur_end = cur_end.upgrade().unwrap();
+        Self::assert_final_state(cur_end.borrow());
+        let mut cur_end = cur_end.borrow_mut();
+        *cur_end = Node(Transition::SingleEpsilon(fin_ref.clone()));
+      }
+      /* Create a new start state with edges to the start of each case. */
+      let st: rc::Rc<RefCell<Node<Sym, A>>, A> = rc::Rc::new_in(
+        RefCell::new(Node(Transition::MultiEpsilon(start_states))),
+        alloc,
+      );
+      all_states.push(st);
+
+      Ok(Self(all_states))
+    }
+
+    fn for_concatenations(
+      components: impl IntoIterator<IntoIter=impl Iterator<Item=Self>+DoubleEndedIterator>,
+      alloc: A,
+    ) -> Result<Self, NFAConstructionError> {
+      let mut all_states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+
+      let fin: rc::Rc<RefCell<Node<Sym, A>>, A> =
+        rc::Rc::new_in(RefCell::new(Node(Transition::Final)), alloc.clone());
+      let fin_ref = StateRef(rc::Rc::downgrade(&fin));
+      all_states.push(fin);
+
+      /* Get references to all start and end states of each case, and add internal
+       * states to the universe. */
+      let mut start_states: Vec<rc::Weak<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+      let mut end_states: Vec<rc::Weak<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+      /* NB: We iterate in *REVERSE* so that *later* components are closer to the
+       * *front*! */
+      for Self(cur_states) in components.into_iter().rev() {
+        let cur_st = rc::Rc::downgrade(cur_states.first().unwrap());
+        let cur_fin = rc::Rc::downgrade(cur_states.last().unwrap());
+        start_states.push(cur_st);
+        end_states.push(cur_fin);
+        all_states.extend(cur_states);
+      }
+
+      debug_assert_eq!(start_states.len(), end_states.len());
+      /* Mutate all end states to point to the start state one *after* them. */
+      for (i, cur_end) in end_states.into_iter().enumerate() {
+        let cur_end = cur_end.upgrade().unwrap();
+        Self::assert_final_state(cur_end.borrow());
+        let mut cur_end = cur_end.borrow_mut();
+
+        if i == 0 {
+          /* The last end state (reversed) should point to the newly created final
+           * state. */
+          *cur_end = Node(Transition::SingleEpsilon(fin_ref.clone()));
+        } else {
+          debug_assert!(i > 0);
+          let next_start = &start_states[i - 1];
+          *cur_end = Node(Transition::SingleEpsilon(StateRef(next_start.clone())));
+        }
+      }
+      /* Make a new start state, and point it to the first start state (at the
+       * end). */
+      let first_start = start_states.last().unwrap().clone();
+      mem::drop(start_states);
+      let st: rc::Rc<RefCell<Node<Sym, A>>, A> = rc::Rc::new_in(
+        RefCell::new(Node(Transition::SingleEpsilon(StateRef(first_start)))),
+        alloc,
+      );
+      all_states.push(st);
+
+      Ok(Self(all_states))
+    }
+
+    pub fn recursively_construct_from_regexp<L>(
+      expr: Expr<L, A>,
+      alloc: A,
+    ) -> Result<Self, NFAConstructionError>
+    where
+      L: LiteralEncoding,
+      Sym: From<L::Single>,
+    {
+      match expr {
+        Expr::SingleLiteral(sl) => Self::for_single_literal(sl, alloc),
+        Expr::EscapedLiteral(el) => Self::for_escaped_literal(el, alloc),
+        Expr::Backref(_) => Err(NFAConstructionError::Backref),
+        Expr::Alternation { cases } => {
+          let mut sub_universes: Vec<Self, A> = Vec::new_in(alloc.clone());
+          for c in cases.into_iter() {
+            sub_universes.push(Self::recursively_construct_from_regexp(*c, alloc.clone())?);
+          }
+          Self::for_alternations(sub_universes, alloc)
+        },
+        Expr::Concatenation { components } => {
+          let mut sub_universes: Vec<Self, A> = Vec::new_in(alloc.clone());
+          for c in components.into_iter() {
+            sub_universes.push(Self::recursively_construct_from_regexp(*c, alloc.clone())?);
+          }
+          Self::for_concatenations(sub_universes, alloc)
+        },
+        _ => todo!(),
+      }
     }
   }
 }
