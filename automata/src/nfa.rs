@@ -204,6 +204,9 @@ mod builder {
         let mut cur_end = cur_end.borrow_mut();
         *cur_end = Node(Transition::SingleEpsilon(fin_ref.clone()));
       }
+      /* Reverse the start states so they come out in the original order from
+       * from_builder(). */
+      start_states.reverse();
       /* Create a new start state with edges to the start of each case. */
       let st: rc::Rc<RefCell<Node<Sym, A>>, A> = rc::Rc::new_in(
         RefCell::new(Node(Transition::MultiEpsilon(start_states))),
@@ -408,9 +411,13 @@ where
   A: Allocator+Clone,
 {
   fn from_builder(
-    builder: builder::Universe<Sym, A>,
+    mut builder: builder::Universe<Sym, A>,
     alloc: A,
   ) -> Result<Self, NFAConstructionError> {
+    /* First, reverse all the states so they go from left to right. The builder
+     * constructs them backwards. */
+    builder.0.reverse();
+
     let mut all_states: Vec<Node<Sym, A>, A> =
       Vec::with_capacity_in(builder.0.len(), alloc.clone());
     let mut state_map: IndexMap<
@@ -539,10 +546,10 @@ mod test {
     assert_eq!(universe, Universe {
       states: vec![
         Node {
-          trans: Transition::Final
+          trans: Transition::Symbol('a', State(1))
         },
         Node {
-          trans: Transition::Symbol('a', State(0))
+          trans: Transition::Final
         },
       ]
       .into_boxed_slice()
@@ -556,10 +563,10 @@ mod test {
     assert_eq!(universe, Universe {
       states: vec![
         Node {
-          trans: Transition::Final
+          trans: Transition::Symbol('a', State(1))
         },
         Node {
-          trans: Transition::Symbol('a', State(0))
+          trans: Transition::Final
         },
       ]
       .into_boxed_slice()
@@ -573,22 +580,22 @@ mod test {
     assert_eq!(universe, Universe {
       states: vec![
         Node {
+          trans: Transition::MultiEpsilon(vec![State(1), State(3)].into_boxed_slice())
+        },
+        Node {
+          trans: Transition::Symbol('a', State(2))
+        },
+        Node {
+          trans: Transition::SingleEpsilon(State(5))
+        },
+        Node {
+          trans: Transition::Symbol('b', State(4))
+        },
+        Node {
+          trans: Transition::SingleEpsilon(State(5))
+        },
+        Node {
           trans: Transition::Final
-        },
-        Node {
-          trans: Transition::SingleEpsilon(State(0))
-        },
-        Node {
-          trans: Transition::Symbol('b', State(1))
-        },
-        Node {
-          trans: Transition::SingleEpsilon(State(0))
-        },
-        Node {
-          trans: Transition::Symbol('a', State(3))
-        },
-        Node {
-          trans: Transition::MultiEpsilon(vec![State(2), State(4)].into_boxed_slice())
         },
       ]
       .into_boxed_slice()
@@ -602,22 +609,22 @@ mod test {
     assert_eq!(universe, Universe {
       states: vec![
         Node {
+          trans: Transition::SingleEpsilon(State(1))
+        },
+        Node {
+          trans: Transition::Symbol('a', State(2))
+        },
+        Node {
+          trans: Transition::SingleEpsilon(State(3))
+        },
+        Node {
+          trans: Transition::Symbol('b', State(4))
+        },
+        Node {
+          trans: Transition::SingleEpsilon(State(5))
+        },
+        Node {
           trans: Transition::Final
-        },
-        Node {
-          trans: Transition::SingleEpsilon(State(0))
-        },
-        Node {
-          trans: Transition::Symbol('b', State(1))
-        },
-        Node {
-          trans: Transition::SingleEpsilon(State(2))
-        },
-        Node {
-          trans: Transition::Symbol('a', State(3))
-        },
-        Node {
-          trans: Transition::SingleEpsilon(State(4))
         },
       ]
       .into_boxed_slice()
