@@ -1050,7 +1050,7 @@ pub mod expr {
     EscapedLiteral(Escaped<L>),
     /// `\<1-9>`
     Backref(Backref),
-    /// `^` or `$`
+    /// `^` or `$` or `\b` or `\<`
     Anchor(Anchor),
     /// `[a-z]` or `\w` or `\s-` or `.`
     CharSelector(SingleCharSelector<L, A>),
