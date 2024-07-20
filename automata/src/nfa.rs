@@ -194,16 +194,23 @@ mod builder {
       let fin_ref = StateRef(rc::Rc::downgrade(&fin));
       all_states.push(fin);
 
+      let Self(inner) = inner;
       /* Make the end point to our newly allocated final state, closing the group
        * as we do so. */
-      let inner_end = inner.0.first().unwrap();
-      Self::assert_final_state(inner_end.borrow());
-      let mut inner_end = inner_end.borrow_mut();
-      *inner_end = Node(Transition::EndGroup(fin_ref));
+      {
+        let inner_end = inner.first().unwrap();
+        Self::assert_final_state(inner_end.borrow());
+        let mut inner_end = inner_end.borrow_mut();
+        *inner_end = Node(Transition::EndGroup(fin_ref));
+      }
 
       /* Make a new start which points to the internal start node, opening the
        * group as we do so. */
-      let inner_start = StateRef(rc::Rc::downgrade(inner.0.last().unwrap()));
+      let inner_start = StateRef(rc::Rc::downgrade(inner.last().unwrap()));
+
+      /* Add the inner nodes to the current universe. */
+      all_states.extend(inner);
+
       let st: rc::Rc<RefCell<Node<Sym, A>>, A> = rc::Rc::new_in(
         RefCell::new(Node(Transition::StartGroup(maybe_index, inner_start))),
         alloc,
@@ -711,36 +718,45 @@ mod test {
       .into_boxed_slice()
     });
 
-    /* let expr = parse::<UnicodeEncoding, _>("\\(b\\)", Global).unwrap(); */
-    /* let universe =
-     * Universe::recursively_construct_from_regexp(expr).unwrap(); */
-    /* assert_eq!(universe, Universe { */
-    /* states: vec![ */
-    /* Node { */
-    /* trans: Transition::SingleEpsilon(State(1)), */
-    /* }, */
-    /* Node { */
-    /* trans: Transition::StartGroup(None, State(2)), */
-    /* }, */
-    /* Node { */
-    /* trans: Transition::Symbol('b', State(3)), */
-    /* }, */
-    /* Node { */
-    /* trans: Transition::SingleEpsilon(State(4)), */
-    /* }, */
-    /* Node { */
-    /* trans: Transition::SingleEpsilon(State(5)), */
-    /* }, */
-    /* Node { */
-    /* trans: Transition::Final, */
-    /* } */
-    /* ] */
-    /* .into_boxed_slice() */
-    /* }); */
+    let expr = parse::<UnicodeEncoding, _>("\\(b\\)", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::StartGroup(None, State(1)),
+        },
+        Node {
+          trans: Transition::Symbol('b', State(2)),
+        },
+        Node {
+          trans: Transition::EndGroup(State(3)),
+        },
+        Node {
+          trans: Transition::Final,
+        }
+      ]
+      .into_boxed_slice()
+    });
 
-    /* let expr = parse::<UnicodeEncoding, _>("(?2:b)", Global).unwrap(); */
-    /* let universe =
-     * Universe::recursively_construct_from_regexp(expr).unwrap(); */
+    let expr = parse::<UnicodeEncoding, _>("\\(?2:b\\)", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::StartGroup(NonZeroUsize::new(2).map(ExplicitGroupIndex), State(1)),
+        },
+        Node {
+          trans: Transition::Symbol('b', State(2)),
+        },
+        Node {
+          trans: Transition::EndGroup(State(3)),
+        },
+        Node {
+          trans: Transition::Final,
+        }
+      ]
+      .into_boxed_slice()
+    });
   }
 }
 
