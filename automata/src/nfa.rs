@@ -24,6 +24,7 @@ use displaydoc::Display;
 use emacs_regexp_syntax::{ast::expr::Expr, encoding::LiteralEncoding};
 use indexmap::IndexMap;
 use rustc_hash::FxHasher;
+use smallvec::SmallVec;
 use thiserror::Error;
 
 use crate::alloc_types::*;
@@ -53,6 +54,7 @@ mod builder {
     },
     encoding::LiteralEncoding,
   };
+  use smallvec::SmallVec;
 
   use super::{MaybeDebug, NFAConstructionError};
   use crate::alloc_types::*;
@@ -73,7 +75,7 @@ mod builder {
 
   pub enum Transition<Sym, A: Allocator> {
     SingleEpsilon(StateRef<Sym, A>),
-    MultiEpsilon(Vec<StateRef<Sym, A>, A>),
+    MultiEpsilon(SmallVec<StateRef<Sym, A>, A, 2>),
     Symbol(RefCell<Option<Sym>>, StateRef<Sym, A>),
     StartGroup(Option<NonZeroUsize>, StateRef<Sym, A>),
     EndGroup(StateRef<Sym, A>),
@@ -220,10 +222,7 @@ mod builder {
       Ok(Self(all_states))
     }
 
-    fn for_alternations(
-      cases: impl IntoIterator<IntoIter=impl Iterator<Item=Self>+DoubleEndedIterator>,
-      alloc: A,
-    ) -> Result<Self, NFAConstructionError> {
+    fn for_alternations(cases: Vec<Self, A>, alloc: A) -> Result<Self, NFAConstructionError> {
       let mut all_states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
 
       let fin: rc::Rc<RefCell<Node<Sym, A>>, A> =
@@ -233,7 +232,8 @@ mod builder {
 
       /* Get references to all start and end states of each case, and add internal
        * states to the universe. */
-      let mut start_states: Vec<StateRef<Sym, A>, A> = Vec::new_in(alloc.clone());
+      let mut start_states: SmallVec<StateRef<Sym, A>, A, 2> =
+        SmallVec::with_capacity_in(cases.len(), alloc.clone());
       let mut end_states: Vec<rc::Weak<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
       for Self(cur_states) in cases.into_iter().rev() {
         let cur_st = rc::Rc::downgrade(cur_states.last().unwrap());
@@ -264,7 +264,7 @@ mod builder {
     }
 
     fn for_concatenations(
-      components: impl IntoIterator<IntoIter=impl Iterator<Item=Self>+DoubleEndedIterator>,
+      components: Vec<Self, A>,
       alloc: A,
     ) -> Result<Self, NFAConstructionError> {
       let mut all_states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
@@ -366,7 +366,7 @@ pub struct ExplicitGroupIndex(pub NonZeroUsize);
 #[derive(Clone)]
 pub enum Transition<Sym, A: Allocator> {
   SingleEpsilon(State),
-  MultiEpsilon(Box<[State], A>),
+  MultiEpsilon(SmallVec<State, A, 2>),
   Symbol(Sym, State),
   StartGroup(Option<ExplicitGroupIndex>, State),
   EndGroup(State),
@@ -505,14 +505,15 @@ where
           Transition::SingleEpsilon(*state)
         },
         builder::Transition::MultiEpsilon(state_refs) => {
-          let states: Box<[State], A> = {
-            let mut states: Vec<State, A> = Vec::with_capacity_in(state_refs.len(), alloc.clone());
+          let states: SmallVec<State, A, 2> = {
+            let mut states: SmallVec<State, A, 2> =
+              SmallVec::with_capacity_in(state_refs.len(), alloc.clone());
             for builder::StateRef(weak) in state_refs.iter() {
               let p: *const builder::Node<Sym, A> = weak.upgrade().unwrap().as_ptr().cast_const();
               let state = state_map.get(&p).unwrap();
               states.push(*state);
             }
-            states.into_boxed_slice()
+            states
           };
           Transition::MultiEpsilon(states)
         },
@@ -607,6 +608,7 @@ mod test {
   use std::alloc::Global;
 
   use emacs_regexp_syntax::{encoding::UnicodeEncoding, parser::parse};
+  use smallvec::smallvec;
 
   use super::*;
 
@@ -651,7 +653,7 @@ mod test {
     assert_eq!(universe, Universe {
       states: vec![
         Node {
-          trans: Transition::MultiEpsilon(vec![State(1), State(3)].into_boxed_slice())
+          trans: Transition::MultiEpsilon(smallvec![State(1), State(3)])
         },
         Node {
           trans: Transition::Symbol('a', State(2))

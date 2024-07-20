@@ -84,6 +84,7 @@ dependencies = [
  "hashbrown",
  "indexmap",
  "rustc-hash",
+ "smallvec",
  "thiserror",
  "xxhash-rust",
 ]
@@ -340,6 +341,11 @@ dependencies = [
  "tempfile",
  "wait-timeout",
 ]
+
+[[package]]
+name = "smallvec"
+version = "2.0.0-alpha.6"
+source = "git+https://github.com/cosmicexplorer/rust-smallvec?rev=c60f2722b0f2818953641323ab11b1e9fa83d126#c60f2722b0f2818953641323ab11b1e9fa83d126"
 
 [[package]]
 name = "static_assertions"
