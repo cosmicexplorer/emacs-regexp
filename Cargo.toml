@@ -10,7 +10,7 @@ default-members         = [
     ".",
     "syntax",
     "ffi",
-    # "automata",
+    "automata",
     "multibyte",
 ]
 resolver                = "2"
