@@ -35,12 +35,18 @@ cfg_if::cfg_if! {
   }
 }
 
+/// Whether the next byte matches anything except exactly one char.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct NegatedSingleChar<Sym>(Sym);
+
 mod builder {
   use core::{alloc::Allocator, cell::RefCell, fmt, mem, num::NonZeroUsize, ops};
 
   use emacs_regexp_syntax::{
     ast::{
-      expr::Expr,
+      /* character_alternatives::{CharAltComponent, CharacterAlternative, ComplementBehavior}, */
+      expr::{Expr, SingleCharSelector},
       groups::{Backref, BackrefIndex, ExplicitGroupIndex, GroupKind},
       literals::single::{escapes::Escaped, SingleLiteral},
       postfix_operators::{GreedyBehavior, MaybeGreedyOperator, PostfixOp, SimpleOperator},
@@ -48,7 +54,7 @@ mod builder {
     encoding::LiteralEncoding,
   };
 
-  use super::MaybeDebug;
+  use super::{MaybeDebug, NegatedSingleChar};
   use crate::alloc_types::*;
 
   pub struct StateRef<Sym, A: Allocator>(pub rc::Weak<RefCell<Node<Sym, A>>, A>);
@@ -68,10 +74,11 @@ mod builder {
   pub enum Transition<Sym, A: Allocator> {
     SingleEpsilon(StateRef<Sym, A>),
     MultiEpsilon(Vec<StateRef<Sym, A>, A>),
-    Symbol(RefCell<Option<Sym>>, StateRef<Sym, A>),
+    Symbol(Sym, StateRef<Sym, A>),
     StartGroup(Option<NonZeroUsize>, StateRef<Sym, A>),
     EndGroup(StateRef<Sym, A>),
     Backref(NonZeroUsize, StateRef<Sym, A>),
+    NegatedSingle(NegatedSingleChar<Sym>, StateRef<Sym, A>),
     Final,
   }
 
@@ -88,6 +95,7 @@ mod builder {
         Self::StartGroup(i, s) => write!(f, "Transition::StartGroup({i:?}, {s:?})"),
         Self::EndGroup(s) => write!(f, "Transition::EndGroup({s:?})"),
         Self::Backref(i, s) => write!(f, "Transition::Backref({i:?}, {s:?})"),
+        Self::NegatedSingle(nsc, s) => write!(f, "Transition::NegatedSingle({nsc:?}, {s:?})"),
         Self::Final => write!(f, "Transition::Final"),
       }
     }
@@ -132,10 +140,7 @@ mod builder {
 
       let SingleLiteral(lit) = lit;
       let start = rc::Rc::new_in(
-        RefCell::new(Node(Transition::Symbol(
-          RefCell::new(Some(lit.into())),
-          fin_ref,
-        ))),
+        RefCell::new(Node(Transition::Symbol(lit.into(), fin_ref))),
         alloc,
       );
       states.push(start);
@@ -157,8 +162,29 @@ mod builder {
 
       let Escaped(SingleLiteral(lit)) = lit;
       let start = rc::Rc::new_in(
-        RefCell::new(Node(Transition::Symbol(
-          RefCell::new(Some(lit.into())),
+        RefCell::new(Node(Transition::Symbol(lit.into(), fin_ref))),
+        alloc,
+      );
+      states.push(start);
+
+      Self(states)
+    }
+
+    fn for_dot<L>(alloc: A) -> Self
+    where
+      L: LiteralEncoding,
+      Sym: From<L::Single>,
+    {
+      let mut states: Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
+
+      let fin: rc::Rc<RefCell<Node<Sym, A>>, A> =
+        rc::Rc::new_in(RefCell::new(Node(Transition::Final)), alloc.clone());
+      let fin_ref = StateRef(rc::Rc::downgrade(&fin));
+      states.push(fin);
+
+      let start = rc::Rc::new_in(
+        RefCell::new(Node(Transition::NegatedSingle(
+          NegatedSingleChar(L::NEWLINE.into()),
           fin_ref,
         ))),
         alloc,
@@ -450,6 +476,10 @@ mod builder {
         Expr::SingleLiteral(sl) => Self::for_single_literal(sl, alloc),
         Expr::EscapedLiteral(el) => Self::for_escaped_literal(el, alloc),
         Expr::Backref(br) => Self::for_backref(br, alloc),
+        Expr::CharSelector(scs) => match scs {
+          SingleCharSelector::Dot => Self::for_dot::<L>(alloc),
+          _ => todo!("scs type not yet implemented"),
+        },
         Expr::Postfix { inner, op } => {
           let inner = Self::recursively_construct_from_regexp(*inner, alloc.clone());
           Self::for_postfix(inner, op, alloc)
@@ -495,6 +525,7 @@ pub enum Transition<Sym, A: Allocator> {
   StartGroup(Option<GroupIndex>, State),
   EndGroup(State),
   Backref(GroupIndex, State),
+  NegatedSingle(NegatedSingleChar<Sym>, State),
   Final,
 }
 
@@ -511,6 +542,7 @@ where
       (Self::StartGroup(i1, s1), Self::StartGroup(i2, s2)) => i1.eq(i2) && s1.eq(s2),
       (Self::EndGroup(s1), Self::EndGroup(s2)) => s1.eq(s2),
       (Self::Backref(i1, s1), Self::Backref(i2, s2)) => i1.eq(i2) && s1.eq(s2),
+      (Self::NegatedSingle(nsc1, s1), Self::NegatedSingle(nsc2, s2)) => nsc1.eq(nsc2) && s1.eq(s2),
       (Self::Final, Self::Final) => true,
       _ => false,
     }
@@ -537,6 +569,7 @@ where
       Self::StartGroup(i, s) => write!(f, "Transition::StartGroup({i:?}, {s:?})"),
       Self::EndGroup(s) => write!(f, "Transition::EndGroup({s:?})"),
       Self::Backref(i, s) => write!(f, "Transition::Backref({i:?}, {s:?})"),
+      Self::NegatedSingle(nsc, s) => write!(f, "Transition::NegatedSingle({nsc:?}, {s:?})"),
       Self::Final => write!(f, "Transition::Final"),
     }
   }
@@ -594,7 +627,7 @@ where A: Allocator
 #[allow(private_bounds)]
 impl<Sym, A> Universe<Sym, A>
 where
-  Sym: MaybeDebug<Sym>,
+  Sym: MaybeDebug<Sym>+Copy,
   A: Allocator+Clone,
 {
   fn from_builder(mut builder: builder::Universe<Sym, A>, alloc: A) -> Self {
@@ -644,8 +677,7 @@ where
         builder::Transition::Symbol(sym, builder::StateRef(weak)) => {
           let p: *const builder::Node<Sym, A> = weak.upgrade().unwrap().as_ptr().cast_const();
           let state = state_map.get(&p).unwrap();
-          let sym: Sym = sym.borrow_mut().take().unwrap();
-          Transition::Symbol(sym, *state)
+          Transition::Symbol(*sym, *state)
         },
         builder::Transition::StartGroup(maybe_index, builder::StateRef(weak)) => {
           let maybe_index = maybe_index.map(GroupIndex);
@@ -662,6 +694,11 @@ where
           let p: *const builder::Node<Sym, A> = weak.upgrade().unwrap().as_ptr().cast_const();
           let state = state_map.get(&p).unwrap();
           Transition::Backref(GroupIndex(*backref_index), *state)
+        },
+        builder::Transition::NegatedSingle(nsc, builder::StateRef(weak)) => {
+          let p: *const builder::Node<Sym, A> = weak.upgrade().unwrap().as_ptr().cast_const();
+          let state = state_map.get(&p).unwrap();
+          Transition::NegatedSingle(*nsc, *state)
         },
         builder::Transition::Final => Transition::Final,
       };
@@ -1016,6 +1053,23 @@ mod test {
       states: vec![
         Node {
           trans: Transition::Backref(GroupIndex(NonZeroUsize::new(1).unwrap()), State(1)),
+        },
+        Node {
+          trans: Transition::Final,
+        }
+      ]
+      .into_boxed_slice()
+    });
+  }
+
+  #[test]
+  fn test_dot() {
+    let expr = parse::<UnicodeEncoding, _>(".", Global).unwrap();
+    let universe = Universe::<char, _>::recursively_construct_from_regexp(expr);
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::NegatedSingle(NegatedSingleChar('\n'), State(1)),
         },
         Node {
           trans: Transition::Final,

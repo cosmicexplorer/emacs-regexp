@@ -81,6 +81,9 @@ pub mod encoding {
 
     fn parse_ascii(c: Self::Single) -> Option<ascii::Char>;
 
+    /// `\n`
+    const NEWLINE: Self::Single;
+
     /// `\`
     const BACKSLASH: Self::Single;
     /// `|`
@@ -253,6 +256,8 @@ pub mod encoding {
       c.as_ascii()
     }
 
+    const NEWLINE: u8 = b'\n';
+
     const BACKSLASH: u8 = b'\\';
     const PIPE: u8 = b'|';
 
@@ -364,6 +369,8 @@ pub mod encoding {
 
     #[inline(always)]
     fn parse_ascii(c: char) -> Option<ascii::Char> { c.as_ascii() }
+
+    const NEWLINE: char = '\n';
 
     const BACKSLASH: char = '\\';
     const PIPE: char = '|';
@@ -486,6 +493,8 @@ pub mod encoding {
 
     #[inline(always)]
     fn parse_ascii(c: SingleChar) -> Option<ascii::Char> { c.try_as_ascii() }
+
+    const NEWLINE: SingleChar = SingleChar::from_byte(b'\n');
 
     const BACKSLASH: SingleChar = SingleChar::from_byte(b'\\');
     const PIPE: SingleChar = SingleChar::from_byte(b'|');
