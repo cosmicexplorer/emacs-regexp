@@ -16,13 +16,14 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
+/* FIXME: unused! */
+#![allow(dead_code)]
+
 //! SIMD search for sets of literal byte strings.
 
 use core::{alloc::Allocator, simd::prelude::*};
 
-use crate::{
-  alloc_types::*, continuation, ComponentOffset, IntraComponentInterval, UnanchoredMatchResult,
-};
+use crate::{alloc_types::*, ComponentOffset};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]

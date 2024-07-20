@@ -19,7 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 //! Rolling window hash iterators.
 
 pub mod hashing {
-  use core::{iter, mem::MaybeUninit};
+  use core::iter;
 
   use crate::{ComponentLen, ComponentOffset};
 
@@ -419,6 +419,6 @@ pub mod hashing {
   }
 }
 
-pub mod table {
-  use super::hashing;
-}
+/* pub mod table { */
+/*   use super::hashing; */
+/* } */

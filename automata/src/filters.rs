@@ -16,6 +16,9 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
+/* FIXME: unused! */
+#![allow(dead_code)]
+
 //! Probabilistic set data structures.
 
 use core::{array, mem::MaybeUninit, simd::prelude::*};
@@ -133,16 +136,18 @@ impl Filter {
     (unsafe { MaybeUninit::array_assume_init(result) }, h.into())
   }
 
+  /* FIXME: unused! */
+  #[allow(unused_variables, dead_code)]
   pub fn rolling_matches(&self, haystack: &[u8]) {
-    let mut h: Simd<u8, 8> = Simd::splat(0);
+    let h: Simd<u8, 8> = Simd::splat(0);
     let (prefix, middle, suffix): (&[u8], &[Simd<u8, 4>], &[u8]) = haystack.as_simd();
     /* TODO: support middle.len() == 1! */
     let (first, rest) = middle.split_first().unwrap();
 
-    todo!();
-
     const LSHIFTS: Simd<u8, 8> = Simd::from_array([7, 6, 5, 4, 3, 2, 1, 0]);
     let lsb_mask: Simd<u8, 8> = Simd::splat(0b1);
+
+    todo!();
   }
 }
 

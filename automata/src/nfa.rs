@@ -18,16 +18,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Non-deterministic finite automation structure.
 
-use core::{alloc::Allocator, cell::RefCell, fmt, hash::BuildHasherDefault};
+use core::{alloc::Allocator, fmt, hash::BuildHasherDefault};
 
 use displaydoc::Display;
-use emacs_regexp_syntax::{
-  ast::{
-    expr::Expr,
-    literals::single::{escapes::Escaped, SingleLiteral},
-  },
-  encoding::LiteralEncoding,
-};
+use emacs_regexp_syntax::{ast::expr::Expr, encoding::LiteralEncoding};
 use indexmap::IndexMap;
 use rustc_hash::FxHasher;
 use thiserror::Error;
@@ -41,7 +35,7 @@ pub enum NFAConstructionError {
 }
 
 mod builder {
-  use core::{alloc::Allocator, cell::RefCell, mem, ops};
+  use core::{alloc::Allocator, cell::RefCell, fmt, mem, ops};
 
   use emacs_regexp_syntax::{
     ast::{
@@ -56,6 +50,12 @@ mod builder {
 
   pub struct StateRef<Sym, A: Allocator>(pub rc::Weak<RefCell<Node<Sym, A>>, A>);
 
+  impl<Sym, A> fmt::Debug for StateRef<Sym, A>
+  where A: Allocator
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { self.0.fmt(f) }
+  }
+
   impl<Sym, A> Clone for StateRef<Sym, A>
   where A: Allocator+Clone
   {
@@ -69,12 +69,45 @@ mod builder {
     Final,
   }
 
+  impl<Sym, A> fmt::Debug for Transition<Sym, A>
+  where
+    Sym: fmt::Debug,
+    A: Allocator,
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+        Self::SingleEpsilon(sr) => write!(f, "Transition::SingleEpsilon({:?})", sr),
+        Self::MultiEpsilon(m) => write!(f, "Transition::MultiEpsilon({:?})", m),
+        Self::Symbol(sym, sr) => write!(f, "Transition::Symbol({:?}, {:?})", sym, sr),
+        Self::Final => write!(f, "Transition::Final"),
+      }
+    }
+  }
+
   pub struct Node<Sym, A: Allocator>(pub Transition<Sym, A>);
+
+  impl<Sym, A> fmt::Debug for Node<Sym, A>
+  where
+    Sym: fmt::Debug,
+    A: Allocator,
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "Node({:?})", &self.0) }
+  }
 
   pub struct Universe<Sym, A: Allocator>(pub Vec<rc::Rc<RefCell<Node<Sym, A>>, A>, A>);
 
+  impl<Sym, A> fmt::Debug for Universe<Sym, A>
+  where
+    Sym: fmt::Debug,
+    A: Allocator,
+  {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "Universe({:?})", &self.0) }
+  }
+
   impl<Sym, A> Universe<Sym, A>
-  where A: Allocator+Clone
+  where
+    Sym: fmt::Debug,
+    A: Allocator+Clone,
   {
     fn for_single_literal<L>(lit: SingleLiteral<L>, alloc: A) -> Result<Self, NFAConstructionError>
     where
@@ -149,8 +182,8 @@ mod builder {
       let mut start_states: Vec<StateRef<Sym, A>, A> = Vec::new_in(alloc.clone());
       let mut end_states: Vec<rc::Weak<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
       for Self(cur_states) in cases.into_iter() {
-        let cur_st = rc::Rc::downgrade(cur_states.first().unwrap());
-        let cur_fin = rc::Rc::downgrade(cur_states.last().unwrap());
+        let cur_st = rc::Rc::downgrade(cur_states.last().unwrap());
+        let cur_fin = rc::Rc::downgrade(cur_states.first().unwrap());
         start_states.push(StateRef(cur_st));
         end_states.push(cur_fin);
         all_states.extend(cur_states);
@@ -191,8 +224,10 @@ mod builder {
       /* NB: We iterate in *REVERSE* so that *later* components are closer to the
        * *front*! */
       for Self(cur_states) in components.into_iter().rev() {
-        let cur_st = rc::Rc::downgrade(cur_states.first().unwrap());
-        let cur_fin = rc::Rc::downgrade(cur_states.last().unwrap());
+        let cur_st = rc::Rc::downgrade(cur_states.last().unwrap());
+        let cur_fin = rc::Rc::downgrade(cur_states.first().unwrap());
+        #[cfg(test)]
+        dbg!((cur_st.upgrade(), cur_fin.upgrade()));
         start_states.push(cur_st);
         end_states.push(cur_fin);
         all_states.extend(cur_states);
@@ -202,6 +237,8 @@ mod builder {
       /* Mutate all end states to point to the start state one *after* them. */
       for (i, cur_end) in end_states.into_iter().enumerate() {
         let cur_end = cur_end.upgrade().unwrap();
+        #[cfg(test)]
+        dbg!((i, &cur_end));
         Self::assert_final_state(cur_end.borrow());
         let mut cur_end = cur_end.borrow_mut();
 
@@ -361,7 +398,9 @@ where A: Allocator
 }
 
 impl<Sym, A> Universe<Sym, A>
-where A: Allocator+Clone
+where
+  Sym: fmt::Debug,
+  A: Allocator+Clone,
 {
   fn from_builder(
     builder: builder::Universe<Sym, A>,
@@ -514,10 +553,19 @@ mod test {
           trans: Transition::Final
         },
         Node {
-          trans: Transition::Symbol('b', State(0))
+          trans: Transition::SingleEpsilon(State(0))
         },
         Node {
-          trans: Transition::Symbol('a', State(1))
+          trans: Transition::Symbol('b', State(1))
+        },
+        Node {
+          trans: Transition::SingleEpsilon(State(2))
+        },
+        Node {
+          trans: Transition::Symbol('a', State(3))
+        },
+        Node {
+          trans: Transition::SingleEpsilon(State(4))
         },
       ]
       .into_boxed_slice()
