@@ -28,6 +28,14 @@ use thiserror::Error;
 
 use crate::alloc_types::*;
 
+cfg_if::cfg_if! {
+  if #[cfg(test)] {
+    trait MaybeDebug<T> = From<T> + fmt::Debug;
+  } else {
+    trait MaybeDebug<T> = From<T>;
+  }
+}
+
 #[derive(Debug, Display, Error)]
 pub enum NFAConstructionError {
   /// backref provided in AST
@@ -45,7 +53,7 @@ mod builder {
     encoding::LiteralEncoding,
   };
 
-  use super::NFAConstructionError;
+  use super::{MaybeDebug, NFAConstructionError};
   use crate::alloc_types::*;
 
   pub struct StateRef<Sym, A: Allocator>(pub rc::Weak<RefCell<Node<Sym, A>>, A>);
@@ -106,7 +114,8 @@ mod builder {
 
   impl<Sym, A> Universe<Sym, A>
   where
-    /* Sym: fmt::Debug, */ A: Allocator+Clone
+    Sym: MaybeDebug<Sym>,
+    A: Allocator+Clone,
   {
     fn for_single_literal<L>(lit: SingleLiteral<L>, alloc: A) -> Result<Self, NFAConstructionError>
     where
@@ -392,9 +401,11 @@ where A: Allocator
   }
 }
 
+#[allow(private_bounds)]
 impl<Sym, A> Universe<Sym, A>
 where
-  /* Sym: fmt::Debug, */ A: Allocator+Clone
+  Sym: MaybeDebug<Sym>,
+  A: Allocator+Clone,
 {
   fn from_builder(
     builder: builder::Universe<Sym, A>,
