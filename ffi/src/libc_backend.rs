@@ -154,16 +154,6 @@ pub fn do_panic(info: &PanicInfo) -> ! {
   }
 
   let _ = write!(&mut w, "panicked: {}", info.message());
-  /* if let Some(args) = info.message() { */
-  /* let _ = fmt::write(&mut w, *args); */
-  /* } else { */
-  /* let payload = info */
-  /* .payload() */
-  /* .downcast_ref::<&str>() */
-  /* .map(|s| *s) */
-  /* .unwrap_or("<could not parse panic payload>"); */
-  /* let _ = w.write_str(payload); */
-  /* } */
   let _ = w.write_char('\n');
 
   abort_after_writing(w.data())
