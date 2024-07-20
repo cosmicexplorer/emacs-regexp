@@ -1072,6 +1072,20 @@ pub mod expr {
     },
   }
 
+  impl<L, A> Expr<L, A>
+  where
+    L: LiteralEncoding,
+    A: Allocator,
+  {
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+      match self {
+        Self::Concatenation { components } => components.is_empty(),
+        _ => false,
+      }
+    }
+  }
+
   #[cfg(test)]
   impl<L, A> Arbitrary for Expr<L, A>
   where

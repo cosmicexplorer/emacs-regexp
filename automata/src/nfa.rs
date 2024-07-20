@@ -371,6 +371,10 @@ mod builder {
       let fin_ref = StateRef(rc::Rc::downgrade(&fin));
       all_states.push(fin);
 
+      if components.is_empty() {
+        return Self(all_states);
+      }
+
       /* Get references to all start and end states of each case, and add internal
        * states to the universe. */
       let mut start_states: Vec<rc::Weak<RefCell<Node<Sym, A>>, A>, A> = Vec::new_in(alloc.clone());
@@ -700,6 +704,18 @@ mod test {
   use smallvec::smallvec;
 
   use super::*;
+
+  #[test]
+  fn compile_empty() {
+    let expr = parse::<UnicodeEncoding, _>("", Global).unwrap();
+    let universe = Universe::<char, _>::recursively_construct_from_regexp(expr);
+    assert_eq!(universe, Universe {
+      states: vec![Node {
+        trans: Transition::Final
+      },]
+      .into_boxed_slice()
+    });
+  }
 
   #[test]
   fn compile_single_lit() {

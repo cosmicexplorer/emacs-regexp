@@ -1093,6 +1093,21 @@ mod test {
   use crate::encoding::{ByteEncoding, MultibyteEncoding, UnicodeEncoding};
 
   #[test]
+  fn parse_empty() {
+    let parsed = parse::<ByteEncoding, _>(b"", Global).unwrap();
+    assert_eq!(parsed, Expr::<ByteEncoding, Global>::Concatenation {
+      components: vec![]
+    });
+
+    let parsed = parse::<UnicodeEncoding, _>("", Global).unwrap();
+    assert_eq!(parsed, Expr::<UnicodeEncoding, Global>::Concatenation {
+      components: vec![]
+    });
+
+    /* FIXME: multibyte! */
+  }
+
+  #[test]
   fn parse_single_lit() {
     let parsed = parse::<ByteEncoding, _>(b"a", Global).unwrap();
     assert_eq!(
@@ -1263,14 +1278,14 @@ mod test {
 
   /* FIXME: how to handle non-ascii chars? */
   /* proptest! { */
-  /*   #[test] */
-  /*   fn parse_byte_roundtrip(e in gen_expr_byte()) { */
-  /*     let formatted = format!("{}", e); */
-  /*     let parsed = parse::<ByteEncoding, Global>(formatted.as_bytes(), Global); */
-  /*     prop_assert!(parsed.is_ok()); */
-  /*     let parsed = parsed.unwrap(); */
-  /*     prop_assert_eq!(e, parsed); */
-  /*   } */
+  /* #[test] */
+  /* fn parse_byte_roundtrip(e in gen_expr_byte()) { */
+  /* let formatted = format!("{}", e); */
+  /* let parsed = parse::<ByteEncoding, Global>(formatted.as_bytes(), Global); */
+  /* prop_assert!(parsed.is_ok()); */
+  /* let parsed = parsed.unwrap(); */
+  /* prop_assert_eq!(e, parsed); */
+  /* } */
   /* } */
 
   proptest! {
