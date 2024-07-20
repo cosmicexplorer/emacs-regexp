@@ -425,6 +425,29 @@ where A: Allocator+Clone
       states: all_states.into_boxed_slice(),
     })
   }
+
+  pub fn recursively_construct_from_regexp_in<L>(
+    expr: Expr<L, A>,
+    alloc: A,
+  ) -> Result<Self, NFAConstructionError>
+  where
+    L: LiteralEncoding,
+    Sym: From<L::Single>,
+  {
+    let builder = builder::Universe::recursively_construct_from_regexp(expr, alloc.clone())?;
+    Self::from_builder(builder, alloc)
+  }
+
+  pub fn recursively_construct_from_regexp<L>(
+    expr: Expr<L, A>,
+  ) -> Result<Self, NFAConstructionError>
+  where
+    L: LiteralEncoding,
+    Sym: From<L::Single>,
+    A: Default,
+  {
+    Self::recursively_construct_from_regexp_in(expr, A::default())
+  }
 }
 
 impl<Sym, A> PartialEq for Universe<Sym, A>
@@ -456,49 +479,51 @@ where
   }
 }
 
-/* #[cfg(test)] */
-/* mod test { */
-/* use std::alloc::Global; */
+#[cfg(test)]
+mod test {
+  use std::alloc::Global;
 
-/* use emacs_regexp_syntax::{encoding::UnicodeEncoding, parser::parse}; */
+  use emacs_regexp_syntax::{encoding::UnicodeEncoding, parser::parse};
 
-/* use super::*; */
+  use super::*;
 
-/* #[test] */
-/* fn compile_single_lit() { */
-/* let expr = parse::<UnicodeEncoding, _>("a", Global).unwrap(); */
-/* let universe = Universe::recursively_construct_from_regexp(expr).unwrap(); */
-/* assert_eq!(universe, Universe { */
-/* states: vec![ */
-/* Node { */
-/* trans: Transition::Final */
-/* }, */
-/* Node { */
-/* trans: Transition::Symbol('a', State(0)) */
-/* }, */
-/* ] */
-/* }); */
-/* } */
+  #[test]
+  fn compile_single_lit() {
+    let expr = parse::<UnicodeEncoding, _>("a", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::Final
+        },
+        Node {
+          trans: Transition::Symbol('a', State(0))
+        },
+      ]
+      .into_boxed_slice()
+    });
+  }
 
-/* #[test] */
-/* fn compile_concat() { */
-/* let expr = parse::<UnicodeEncoding, _>("ab", Global).unwrap(); */
-/* let universe = Universe::recursively_construct_from_regexp(expr).unwrap(); */
-/* assert_eq!(universe, Universe { */
-/* states: vec![ */
-/* Node { */
-/* trans: Transition::Final */
-/* }, */
-/* Node { */
-/* trans: Transition::Symbol('b', State(0)) */
-/* }, */
-/* Node { */
-/* trans: Transition::Symbol('a', State(1)) */
-/* }, */
-/* ] */
-/* }); */
-/* } */
-/* } */
+  #[test]
+  fn compile_concat() {
+    let expr = parse::<UnicodeEncoding, _>("ab", Global).unwrap();
+    let universe = Universe::recursively_construct_from_regexp(expr).unwrap();
+    assert_eq!(universe, Universe {
+      states: vec![
+        Node {
+          trans: Transition::Final
+        },
+        Node {
+          trans: Transition::Symbol('b', State(0))
+        },
+        Node {
+          trans: Transition::Symbol('a', State(1))
+        },
+      ]
+      .into_boxed_slice()
+    });
+  }
+}
 
 /* TODO: NFA parser! */
 /* struct M<A> */
