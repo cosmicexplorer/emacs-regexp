@@ -37,17 +37,20 @@ impl Filter {
 
     /* [0000000|1, 0000000|0, 0000000|0, 0000000|1] */
     const LSHIFTS: Simd<u8, 4> = Simd::from_array([3, 2, 1, 0]);
-    const LSB_MASK: Simd<u8, 4> = Simd::from_array([0b1, 0b1, 0b1, 0b1]);
+    let lsb_mask: Simd<u8, 4> = Simd::splat(0b1);
+
+    /* extract each "column" of bits from all of the 4 u8s (this is just a
+     * transpose) */
+    let h1: u8 = (((needle >> 7u8) & lsb_mask) << LSHIFTS).reduce_or();
+    let h2: u8 = (((needle >> 6u8) & lsb_mask) << LSHIFTS).reduce_or();
+    let h3: u8 = (((needle >> 5u8) & lsb_mask) << LSHIFTS).reduce_or();
+    let h4: u8 = (((needle >> 4u8) & lsb_mask) << LSHIFTS).reduce_or();
+    let h5: u8 = (((needle >> 3u8) & lsb_mask) << LSHIFTS).reduce_or();
+    let h6: u8 = (((needle >> 2u8) & lsb_mask) << LSHIFTS).reduce_or();
+    let h7: u8 = (((needle >> 1u8) & lsb_mask) << LSHIFTS).reduce_or();
+    let h8: u8 = ((needle & lsb_mask) << LSHIFTS).reduce_or();
 
     /* technically a u4! */
-    let h1: u8 = (((needle >> 7u8) & LSB_MASK) << LSHIFTS).reduce_or();
-    let h2: u8 = (((needle >> 6u8) & LSB_MASK) << LSHIFTS).reduce_or();
-    let h3: u8 = (((needle >> 5u8) & LSB_MASK) << LSHIFTS).reduce_or();
-    let h4: u8 = (((needle >> 4u8) & LSB_MASK) << LSHIFTS).reduce_or();
-    let h5: u8 = (((needle >> 3u8) & LSB_MASK) << LSHIFTS).reduce_or();
-    let h6: u8 = (((needle >> 2u8) & LSB_MASK) << LSHIFTS).reduce_or();
-    let h7: u8 = (((needle >> 1u8) & LSB_MASK) << LSHIFTS).reduce_or();
-    let h8: u8 = ((needle & LSB_MASK) << LSHIFTS).reduce_or();
     debug_assert!(h1 < 16);
     debug_assert!(h2 < 16);
     debug_assert!(h3 < 16);
@@ -60,9 +63,9 @@ impl Filter {
     let widened_hashes: Simd<u16, 8> = Simd::from_array([
       h1 as u16, h2 as u16, h3 as u16, h4 as u16, h5 as u16, h6 as u16, h7 as u16, h8 as u16,
     ]);
-    const INIT_BITS: Simd<u16, 8> = Simd::from_array([0b1, 0b1, 0b1, 0b1, 0b1, 0b1, 0b1, 0b1]);
+    let init_bits: Simd<u16, 8> = Simd::splat(0b1);
 
-    let shifted_bits: Simd<u16, 8> = INIT_BITS << widened_hashes;
+    let shifted_bits: Simd<u16, 8> = init_bits << widened_hashes;
     let result: u16 = shifted_bits.reduce_or();
     result
   }
