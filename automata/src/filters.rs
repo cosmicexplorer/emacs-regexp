@@ -21,7 +21,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 //! Probabilistic set data structures.
 
-use core::{array, mem::MaybeUninit, simd::prelude::*};
+use core::{array, simd::prelude::*};
 
 #[derive(Debug)]
 struct Filter {
@@ -125,18 +125,15 @@ impl Filter {
     let right_bits: Simd<u8, 8> = Simd::splat(0b0000_1111);
     let init_bits: Simd<u16, 8> = Simd::splat(0b1);
 
-    let mut result: [MaybeUninit<u16>; 5] = MaybeUninit::uninit_array();
-    for i in 0..5 {
+    let result: [u16; 5] = array::from_fn(|i| {
       let shift: u8 = 5 - ((i as u8) + 1);
       let hashes: Simd<u16, 8> =
         Simd::from_array(Self::widen_u8(((h >> shift) & right_bits).into()));
-      let cur_result: u16 = (init_bits << hashes).reduce_or();
-      unsafe { result.get_unchecked_mut(i).write(cur_result) };
-    }
-    (unsafe { MaybeUninit::array_assume_init(result) }, h.into())
+      (init_bits << hashes).reduce_or()
+    });
+    (result, h.into())
   }
 
-  /* FIXME: unused! */
   #[allow(unused_variables, dead_code)]
   pub fn rolling_matches(&self, haystack: &[u8]) {
     let h: Simd<u8, 8> = Simd::splat(0);
