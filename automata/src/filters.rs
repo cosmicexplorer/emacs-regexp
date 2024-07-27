@@ -128,9 +128,9 @@ impl Filter {
     let init_bits: Simd<u16, 8> = Simd::splat(0b1);
 
     /* [1, 1, 1, 1] =
-    *  [0b0000_0001, 0b0000_0001, 0b0000_0001, 0b0000_0001] => (transpose 4x8 -> 8x4)
-    *    [0000, 0000, 0000, 0000, 0000, 0000, 0000, 1111] => (raise 1 << x)
-    *    [1, 1, 1, 1, 1, 1, 1, 2^15 - 1] */
+     *  [0b0000_0001, 0b0000_0001, 0b0000_0001, 0b0000_0001] => (transpose 4x8 ->
+     * 8x4)    [0000, 0000, 0000, 0000, 0000, 0000, 0000, 1111] => (raise 1
+     * << x)    [1, 1, 1, 1, 1, 1, 1, 2^15 - 1] */
     let result: [u16; 5] = array::from_fn(|i| {
       let shift: u8 = 5 - ((i as u8) + 1);
 
@@ -190,5 +190,47 @@ mod test {
 
     let (b, _) = Filter::all_adjacent_keys(b"abcdasdf");
     assert_eq!(b, [a1, a2, a3, a4, a5]);
+  }
+
+
+  /* [1, 1, 1, 1] =
+   * [0b0000_0001, 0b0000_0001, 0b0000_0001, 0b0000_0001] =
+   *   (add (3 - i) * 83) [250, 167, 84, 1] =
+   *                      [11111010, 10100111, 01010100, 00000001] =>
+   *   (transpose 4x8 -> 8x4) [1100, 1010, 1100, 1010, 1000, 0110, 1100, 0101] =
+   *                          [12,   10,   12,   10,   8,    6,    10,   5] =>
+   *   (raise 1 << x)         [16,   4,    16,   4,    16,   4,    64,    32] */
+  #[test]
+  fn check_new_simd_hash() {
+    let input: [u8; 4] = [1, 1, 1, 1];
+
+    let v: Simd<u8, 4> = Simd::from_array(input);
+    let factors: Simd<u8, 4> =
+      Simd::from_array(array::from_fn(|i| 3u8 - i as u8)) * Simd::splat(85);
+    let f: [u8; 4] = factors.into();
+    assert_eq!(f, [255, 170, 85, 0]);
+    let added: Simd<u8, 4> = v + factors;
+    let a: [u8; 4] = added.into();
+    assert_eq!(a, [0, 171, 86, 1]);
+    assert_eq!(a, [0b00000000, 0b10101011, 0b01010110, 0b00000001]);
+
+    let resized: Simd<u8, 8> = added.resize(0);
+
+    let lshifts: Simd<u8, 8> = Simd::from_array(array::from_fn(|i| 7u8 - i as u8));
+    let lsb_mask: Simd<u8, 8> = Simd::splat(0b1);
+    let matrix: Simd<u8, 8> = Simd::from_array(array::from_fn(|i| {
+      (((resized >> (8u8 - ((i as u8) + 1u8))) & lsb_mask) << lshifts).reduce_or()
+    }));
+
+    let right_bits: Simd<u8, 8> = Simd::splat(0b0000_1111);
+    let init_bits: Simd<u16, 8> = Simd::splat(0b1);
+    let hashes: Simd<u16, 8> = ((matrix >> 4) & right_bits).cast();
+    let h: [u16; 8] = hashes.into();
+    assert_eq!(h, [4, 2, 4, 2, 4, 2, 6, 5]);
+    let transposed: Simd<u16, 8> = init_bits << hashes;
+    /* let hashed: u16 = transposed.reduce_or(); */
+
+    let result: [u16; 8] = transposed.into();
+    assert_eq!(result, [16, 4, 16, 4, 16, 4, 64, 32]);
   }
 }
