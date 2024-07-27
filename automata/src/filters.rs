@@ -81,28 +81,23 @@ impl Filter {
   }
 
   #[inline(always)]
-  fn widen_u8(u8_hashes: [u8; 8]) -> [u16; 8] {
-    array::from_fn(|i| *unsafe { u8_hashes.get_unchecked(i) } as u16)
-  }
-
-  #[inline(always)]
   fn adjacent_keys(needles: &[u8; 8]) -> (u16, u16) {
     let needles: Simd<u8, 8> = Simd::from_array(*needles);
 
     /* [0000000|1, 0000000|0, 0000000|0, 0000000|1] */
-    const LSHIFTS: Simd<u8, 8> = Simd::from_array([7, 6, 5, 4, 3, 2, 1, 0]);
+    let lshifts: Simd<u8, 8> = Simd::from_array(array::from_fn(|i| 7u8 - i as u8));
     let lsb_mask: Simd<u8, 8> = Simd::splat(0b1);
 
     let h: Simd<u8, 8> = Simd::from_array(array::from_fn(|i| {
-      (((needles >> (8u8 - ((i as u8) + 1u8))) & lsb_mask) << LSHIFTS).reduce_or()
+      (((needles >> (8u8 - ((i as u8) + 1u8))) & lsb_mask) << lshifts).reduce_or()
     }));
 
     let right_bits: Simd<u8, 8> = Simd::splat(0b0000_1111);
-    let left_hashes: [u8; 8] = (h >> 4).into();
-    let right_hashes: [u8; 8] = (h & right_bits).into();
+    let left_hashes = h >> 4;
+    let right_hashes = h & right_bits;
 
-    let widened_left_hashes: Simd<u16, 8> = Simd::from_array(Self::widen_u8(left_hashes));
-    let widened_right_hashes: Simd<u16, 8> = Simd::from_array(Self::widen_u8(right_hashes));
+    let widened_left_hashes: Simd<u16, 8> = left_hashes.cast();
+    let widened_right_hashes: Simd<u16, 8> = right_hashes.cast();
 
     let init_bits: Simd<u16, 8> = Simd::splat(0b1);
 
@@ -118,11 +113,11 @@ impl Filter {
     let needles: Simd<u8, 8> = Simd::from_array(*needles);
 
     /* [0000000|1, 0000000|0, 0000000|0, 0000000|1] */
-    const LSHIFTS: Simd<u8, 8> = Simd::from_array([7, 6, 5, 4, 3, 2, 1, 0]);
+    let lshifts: Simd<u8, 8> = Simd::from_array(array::from_fn(|i| 7u8 - i as u8));
     let lsb_mask: Simd<u8, 8> = Simd::splat(0b1);
 
     let h: Simd<u8, 8> = Simd::from_array(array::from_fn(|i| {
-      (((needles >> (8u8 - ((i as u8) + 1u8))) & lsb_mask) << LSHIFTS).reduce_or()
+      (((needles >> (8u8 - ((i as u8) + 1u8))) & lsb_mask) << lshifts).reduce_or()
     }));
 
     let right_bits: Simd<u8, 8> = Simd::splat(0b0000_1111);
@@ -130,8 +125,7 @@ impl Filter {
 
     let result: [u16; 5] = array::from_fn(|i| {
       let shift: u8 = 5 - ((i as u8) + 1);
-      let hashes: Simd<u16, 8> =
-        Simd::from_array(Self::widen_u8(((h >> shift) & right_bits).into()));
+      let hashes: Simd<u16, 8> = ((h >> shift) & right_bits).cast();
       (init_bits << hashes).reduce_or()
     });
     (result, h.into())
