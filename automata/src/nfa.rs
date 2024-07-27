@@ -620,6 +620,12 @@ pub struct Node<Sym, A: Allocator> {
   trans: Transition<Sym, A>,
 }
 
+impl<Sym, A> Node<Sym, A>
+where A: Allocator
+{
+  pub fn transition(&self) -> &Transition<Sym, A> { &self.trans }
+}
+
 impl<Sym, A> PartialEq for Node<Sym, A>
 where
   Sym: PartialEq,

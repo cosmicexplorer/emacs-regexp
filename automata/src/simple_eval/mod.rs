@@ -45,11 +45,9 @@ pub trait SimpleEvaluator<Cache: SearchState<Self>> {
 
 
 pub mod nfa {
-  use core::{alloc::Allocator, hash::BuildHasherDefault};
+  use core::{alloc::Allocator, mem};
 
   use emacs_regexp_syntax::encoding::LiteralEncoding;
-  use indexmap::IndexSet;
-  use rustc_hash::FxHasher;
 
   use super::{SearchState, SimpleEvaluator};
   use crate::{alloc_types::*, nfa};
@@ -67,7 +65,9 @@ pub mod nfa {
   }
 
   pub struct NFACache<A: Allocator> {
-    current_states: IndexSet<nfa::State, BuildHasherDefault<FxHasher>, A>,
+    current_states: Vec<nfa::State, A>,
+    next_states: Vec<nfa::State, A>,
+    position: usize,
   }
 
   impl<A> NFACache<A>
@@ -76,11 +76,11 @@ pub mod nfa {
     pub fn new(alloc: A) -> Self
     where A: Clone {
       Self {
-        current_states: IndexSet::with_hasher_in(Default::default(), alloc),
+        current_states: Vec::new_in(alloc.clone()),
+        next_states: Vec::new_in(alloc),
+        position: 0,
       }
     }
-
-    pub fn drain(&mut self) -> impl Iterator<Item=nfa::State>+'_ { self.current_states.drain(..) }
   }
 
   impl<L, ANFA, ACache> SearchState<NFAEvaluator<L, ANFA>> for NFACache<ACache>
@@ -95,9 +95,11 @@ pub mod nfa {
 
     fn reset(&mut self, eval: &NFAEvaluator<L, ANFA>) {
       self.current_states.clear();
+      self.next_states.clear();
       let initial_state = nfa::State::zero();
       assert!(eval.nfa.lookup_state(initial_state).is_some());
-      assert!(self.current_states.insert(initial_state));
+      self.current_states.push(initial_state);
+      self.position = 0;
     }
   }
 
@@ -113,9 +115,25 @@ pub mod nfa {
 
     fn evaluate(
       &self,
-      _cache: &mut NFACache<ACache>,
+      cache: &mut NFACache<ACache>,
       mut tokens: impl Iterator<Item=Self::Tok>,
     ) -> Result<Self::Success, Self::Err> {
+      let NFACache {
+        ref mut current_states,
+        ref mut next_states,
+        ..
+      } = cache;
+      next_states.clear();
+
+      for st in current_states.drain(..) {
+        let node = self.nfa.lookup_state(st).unwrap();
+        match node.transition() {
+          nfa::Transition::Final => {},
+          _ => todo!(),
+        }
+      }
+      mem::swap(current_states, next_states);
+
       if tokens.next().is_some() {
         Ok(0)
       } else {
