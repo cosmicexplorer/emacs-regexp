@@ -60,9 +60,7 @@ impl Filter {
     debug_assert!(h7 < 16);
     debug_assert!(h8 < 16);
 
-    let widened_hashes: Simd<u16, 8> = Simd::from_array([
-      h1 as u16, h2 as u16, h3 as u16, h4 as u16, h5 as u16, h6 as u16, h7 as u16, h8 as u16,
-    ]);
+    let widened_hashes: Simd<u16, 8> = Simd::from_array([h1, h2, h3, h4, h5, h6, h7, h8]).cast();
     let init_bits: Simd<u16, 8> = Simd::splat(0b1);
 
     let shifted_bits: Simd<u16, 8> = init_bits << widened_hashes;
@@ -85,9 +83,12 @@ impl Filter {
     let needles: Simd<u8, 8> = Simd::from_array(*needles);
 
     /* [0000000|1, 0000000|0, 0000000|0, 0000000|1] */
+    /* = [7, 6, 5, 4, 3, 2, 1, 0] */
     let lshifts: Simd<u8, 8> = Simd::from_array(array::from_fn(|i| 7u8 - i as u8));
+    /* = [1, 1, 1, 1, 1, 1, 1, 1] */
     let lsb_mask: Simd<u8, 8> = Simd::splat(0b1);
 
+    /* 8x8 matrix transpose */
     let h: Simd<u8, 8> = Simd::from_array(array::from_fn(|i| {
       (((needles >> (8u8 - ((i as u8) + 1u8))) & lsb_mask) << lshifts).reduce_or()
     }));
@@ -113,9 +114,12 @@ impl Filter {
     let needles: Simd<u8, 8> = Simd::from_array(*needles);
 
     /* [0000000|1, 0000000|0, 0000000|0, 0000000|1] */
+    /* = [7, 6, 5, 4, 3, 2, 1, 0] */
     let lshifts: Simd<u8, 8> = Simd::from_array(array::from_fn(|i| 7u8 - i as u8));
+    /* = [1, 1, 1, 1, 1, 1, 1, 1] */
     let lsb_mask: Simd<u8, 8> = Simd::splat(0b1);
 
+    /* 8x8 matrix transpose */
     let h: Simd<u8, 8> = Simd::from_array(array::from_fn(|i| {
       (((needles >> (8u8 - ((i as u8) + 1u8))) & lsb_mask) << lshifts).reduce_or()
     }));
@@ -123,9 +127,17 @@ impl Filter {
     let right_bits: Simd<u8, 8> = Simd::splat(0b0000_1111);
     let init_bits: Simd<u16, 8> = Simd::splat(0b1);
 
+    /* [1, 1, 1, 1] =
+    *  [0b0000_0001, 0b0000_0001, 0b0000_0001, 0b0000_0001] => (transpose 4x8 -> 8x4)
+    *    [0000, 0000, 0000, 0000, 0000, 0000, 0000, 1111] => (raise 1 << x)
+    *    [1, 1, 1, 1, 1, 1, 1, 2^15 - 1] */
     let result: [u16; 5] = array::from_fn(|i| {
       let shift: u8 = 5 - ((i as u8) + 1);
+
+      /* this is a u4x8 of the current window of u8x4 (transposed earlier) */
       let hashes: Simd<u16, 8> = ((h >> shift) & right_bits).cast();
+      /* u4 \in 0..16, so raising 1u16 << {x \in u4} will set exactly one bit of
+       * the resulting u16, and we will OR the bits to get <= 8 bits set. */
       (init_bits << hashes).reduce_or()
     });
     (result, h.into())
